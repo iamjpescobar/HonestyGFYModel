@@ -73,22 +73,22 @@ else:
     chosen_game = games[selected_game_idx]
     
     pitcher_to_analyze = st.radio("Select Pitcher to Target:", [chosen_game['away_pitcher'], chosen_game['home_pitcher']])
-    
-    if pitcher_to_analyze == "TBD":
-        st.info("Pitcher is currently To Be Determined. Choose a different game.")
-    else:
-        st.write(f"### Analyzing Target: **{pitcher_to_analyze}**")
-        
-        with st.spinner("Crunching Statcast data for free..."):
+    with st.spinner("Crunching Statcast data for free..."):
             try:
-                names = pitcher_to_analyze.split(" ")
+                # Clean up accents automatically so the database can read it cleanly
+                # (e.g., converts 'Sánchez' to 'Sanchez')
+                clean_name = pitcher_to_analyze.encode('ascii', 'ignore').decode('utf-8')
+                names = clean_name.split(" ")
                 first, last = names[0], names[-1]
+                
+                # Special manual safety check for Cristopher
+                if "Cristopher" in pitcher_to_analyze:
+                    first, last = "Cristopher", "Sanchez"
                 
                 id_df = playerid_lookup(last, first)
                 if not id_df.empty:
                     pitcher_id = id_df.iloc[0]['key_mlbam']
                     
-                    # Trailing window for active 2026 data analytics
                     data = statcast_pitcher('2026-04-01', '2026-10-01', pitcher_id)
                     
                     if not data.empty:
@@ -111,3 +111,4 @@ else:
                     st.error("Could not locate Player ID.")
             except Exception as e:
                 st.error(f"Error compiling data: {e}")
+    
