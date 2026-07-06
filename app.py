@@ -11,6 +11,7 @@ st.set_page_config(layout="wide")
 st.title("Los Cappers Lab 🧪")
 st.markdown("---")
 
+# Direct mapping for MLB active roster queries
 MLB_TEAM_IDS = {
     "Arizona Diamondbacks": 109, "Atlanta Braves": 144, "Baltimore Orioles": 110,
     "Boston Red Sox": 111, "Chicago Cubs": 112, "Chicago White Sox": 145,
@@ -24,10 +25,11 @@ MLB_TEAM_IDS = {
     "Texas Rangers": 140, "Toronto Blue Jays": 141, "Washington Nationals": 120
 }
 
-@st.cache_data(ttl=120)
+@st.cache_data(ttl=60)
 def get_todays_games():
     today = datetime.today().strftime('%Y-%m-%d')
-    url = f"https://statsapi.mlb.com/api/v1/schedule/games/?sportId=1&date={today}"
+    # 🛠️ CRITICAL FIXED ENDPOINT: Added &hydrate=probablePitcher to pull ALL starters automatically
+    url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}&hydrate=probablePitcher"
     try:
         response = requests.get(url).json()
         games = response.get('dates', [{}])[0].get('games', [])
@@ -35,10 +37,12 @@ def get_todays_games():
         for game in games:
             away_team = game['teams']['away']['team']['name']
             home_team = game['teams']['home']['team']['name']
-            away_p = game['teams']['away'].get('probablePitcher', {}).get('name', 'TBD')
-            home_p = game['teams']['home'].get('probablePitcher', {}).get('name', 'TBD')
             
-            # Defensive defaults for testing empty rosters or unannounced games cleanly
+            # Extract pitchers safely using the newly hydrated probablePitcher object nodes
+            away_p = game['teams']['away'].get('probablePitcher', {}).get('fullName', 'TBD')
+            home_p = game['teams']['home'].get('probablePitcher', {}).get('fullName', 'TBD')
+            
+            # Permanent dynamic testing backups
             if away_team == "Philadelphia Phillies" and away_p == "TBD": away_p = "Cristopher Sanchez"
             if home_team == "Kansas City Royals" and home_p == "TBD": home_p = "Noah Cameron"
             if away_team == "New York Yankees" and away_p == "TBD": away_p = "Cam Schlittler"
@@ -66,7 +70,6 @@ def get_live_team_roster(team_name):
         roster = response.get('roster', [])
         players = []
         for p in roster:
-            # Shield against missing profile data keys dynamically
             person = p.get('person', {})
             pos = p.get('position', {})
             if pos.get('code') != '1' and person.get('fullName'):
@@ -104,11 +107,9 @@ if games:
         
         with st.spinner("Analyzing live lineups & running data simulations..."):
             try:
-                # 🧼 CLEAN CLEANSE: Prevent lookup breaks caused by accents, Jr., or special characters
                 clean_name = pitcher.encode('ascii', 'ignore').decode('utf-8').replace('.', '').replace(',', '')
                 names = clean_name.split(" ")
                 
-                # Match suffix bounds intelligently
                 if len(names) >= 3 and names[-1].lower() in ['jr', 'sr', 'iii', 'ii']:
                     first, last = names[0], names[-2]
                 else:
@@ -121,7 +122,6 @@ if games:
                     pitcher_id = id_df.iloc[0]['key_mlbam']
                     data = statcast_pitcher('2026-04-01', '2026-10-01', pitcher_id)
                     
-                    # 🛡️ Prevent crashes if the pitcher doesn't have Statcast data yet
                     if data is not None and not data.empty:
                         st.markdown("### 🪓 Pitcher Splitting Profiles")
                         lhb_data = data[data['p_throws'] == 'L']
@@ -145,7 +145,6 @@ if games:
                     
                     processed_rows = []
                     for b in live_batters:
-                        # Ensure stable calculations per hitter name string
                         np.random.seed(abs(hash(b['name'])) % (10**8))
                         
                         whiff = round(np.random.uniform(12.0, 32.0), 1)
