@@ -7,7 +7,36 @@ from pybaseball import statcast_pitcher, playerid_lookup
 
 # --- 1. SET LAYOUT CONFIGURATION ---
 st.set_page_config(layout="wide")
-
+# --- INSERT THIS FOR MOBILE OPTIMIZATION ---
+st.markdown("""
+    <style>
+    /* Reduce global application padding for dense mobile viewing */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+    
+    /* Shrink dataframe text and row height on smaller displays */
+    .stDataFrame div[data-testid="stTable"] {
+        font-size: 12px !important;
+    }
+    
+    /* Make metric text more compact to prevent overflow stacking */
+    div[data-testid="stMetricValue"] {
+        font-size: 20px !important;
+    }
+    div[data-testid="stMetricLabel"] {
+        font-size: 12px !important;
+    }
+    
+    /* Optimize radio buttons for mobile tap targets */
+    div[data-testid="stRadio"] > label {
+        font-size: 14px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 st.title("Los Cappers Lab 🧪")
 st.markdown("### 💥 The Advanced S.L.A.M. Index Analytics Hub")
 st.markdown("---")
