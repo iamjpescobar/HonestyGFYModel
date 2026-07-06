@@ -132,14 +132,29 @@ def highlight_slam(row):
 games = get_todays_games()
 
 if games:
-    game_options = [f"{g['away']} ({g['away_pitcher']}) @ {g['home']} ({g['home_pitcher']})" for g in games]
-    selected_idx = st.selectbox("Select Today's Matchup:", range(len(game_options)), format_func=lambda x: game_options[x])
-    chosen_game = games[selected_idx]
-    
-    pitcher = st.radio("Select Pitcher to Target:", [chosen_game['away_pitcher'], chosen_game['home_pitcher']])
+    # 1. MOVED TO SIDEBAR: Matchup selection is now permanently visible on the left
+    with st.sidebar:
+        st.markdown("## 📅 Matchup Slate")
+        game_options = [f"{g['away']} @ {g['home']}" for g in games]
+        selected_idx = st.selectbox(
+            "Select Today's Matchup:", 
+            range(len(game_options)), 
+            format_func=lambda x: game_options[x]
+        )
+        chosen_game = games[selected_idx]
+        
+        st.markdown("---")
+        
+        # 2. MOVED TO SIDEBAR: Quick toggle between pitchers right under the game selection
+        pitcher = st.radio(
+            "Select Pitcher to Target:", 
+            [chosen_game['away_pitcher'], chosen_game['home_pitcher']]
+        )
+        
     opposing_team = chosen_game['home'] if pitcher == chosen_game['away_pitcher'] else chosen_game['away']
     
     if pitcher and pitcher != "TBD":
+        # The main screen remains dedicated entirely to the heavy analytics
         st.write(f"## 📋 Pro-Report: {pitcher}")
         
         try:
@@ -175,10 +190,9 @@ if games:
             }
             st.dataframe(pd.DataFrame(splits_data).set_index("Strikeout %"), use_container_width=True)
             
-            # --- FEATURE 2: LIVE PITCH ARSENAL BREAKDOWN ENGINE ---
+            # --- LIVE PITCH ARSENAL BREAKDOWN ENGINE ---
             st.markdown("### 🎯 Verified Pitch Arsenal Distribution")
             if pitcher_data is not None and not pitcher_data.empty and 'pitch_type' in pitcher_data.columns:
-                # Count and map real pitches
                 raw_counts = pitcher_data['pitch_type'].value_counts()
                 arsenal_rows = []
                 for code, count in raw_counts.items():
@@ -194,7 +208,7 @@ if games:
                     {"Pitch Type": "Changeup", "Frequency": "23.7%", "Raw Count": 331}
                 ]))
             
-            # --- FEATURE 1: REAL BATTER STATCAST INTEGRATION ---
+            # --- REAL BATTER STATCAST INTEGRATION ---
             st.markdown(f"### ⚔️ Intent-To-Homer Lineup Analysis vs. {opposing_team}")
             st.caption("🌲 Emerald Glow = High Volume Verified Power + Covers Arsenal Options | 🪐 Matte Grey = Small Sample Size")
             
@@ -205,22 +219,19 @@ if games:
             for b in live_batters:
                 b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
                 
-                # Try locating real advanced stats match
                 match = pd.DataFrame()
                 if not real_stats_df.empty:
                     match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean]
                 
                 if not match.empty:
-                    # Map real Statcast columns from pybaseball data engine
-                    bbe = int(match['AB'].iloc[0]) # Alternative Proxy for Batted Ball Events
+                    bbe = int(match['AB'].iloc[0])
                     brl = round(float(match.get('Barrel%', [8.5])[0]), 1) if 'Barrel%' in match.columns else 8.5
                     hh = round(float(match.get('HardHit%', [40.0])[0]), 1) if 'HardHit%' in match.columns else 40.0
                     gb = round(float(match.get('GB%', [42.0])[0]), 1) if 'GB%' in match.columns else 42.0
                     ld = round(float(match.get('LD%', [20.0])[0]), 1) if 'LD%' in match.columns else 20.0
                     pull_air = round(float(match.get('FB%', [35.0])[0]), 1) if 'FB%' in match.columns else 35.0
-                    swsp = 38.5 # Baseline default for compliance tracking
+                    swsp = 38.5
                 else:
-                    # Fallback anchored reliably via deterministic hash if player is a recent callup
                     np.random.seed(abs(hash(b['name'])) % (10**8))
                     bbe = int(np.random.uniform(30, 240))
                     brl = round(np.random.uniform(4.0, 14.0), 1)
@@ -232,7 +243,6 @@ if games:
                 
                 match_rating = np.random.choice(["🔥 ELITE", "✅ Good", "Neutral", "⚠️ Cold"], p=[0.15, 0.45, 0.30, 0.10])
                 
-                # S.L.A.M Core Weighting Equation
                 base_score = (brl * 3.5) + (hh * 0.5) + (pull_air * 0.3) - (gb * 0.2)
                 if match_rating == "✅ Good": base_score *= 1.15
                 if bbe > 120: base_score += 8
