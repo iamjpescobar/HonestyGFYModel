@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from pybaseball import statcast_pitcher, playerid_lookup, batting_stats_bref
+from pybaseball import statcast_pitcher, playerid_lookup
 
 # --- 1. SET LAYOUT CONFIGURATION ---
 st.set_page_config(layout="wide")
@@ -77,87 +77,4 @@ def get_todays_games():
             if home_team == "Washington Nationals" and home_p == "TBD": home_p = "Miles Mikolas"
                 
             matchups.append({
-                "game_id": g['gamePk'], "away": away_team, "home": home_team,
-                "away_pitcher": away_p, "home_pitcher": home_p
-            })
-        return matchups if matchups else get_backup_games()
-    except Exception:
-        return get_backup_games()
-
-def get_backup_games():
-    return [
-        {"game_id": 1, "away": "Philadelphia Phillies", "home": "Kansas City Royals", "away_pitcher": "Cristopher Sanchez", "home_pitcher": "Noah Cameron"},
-        {"game_id": 2, "away": "Houston Astros", "home": "Washington Nationals", "away_pitcher": "Mike Burrows", "home_pitcher": "Miles Mikolas"}
-    ]
-
-@st.cache_data(ttl=300)
-def get_live_team_roster(team_name):
-    team_id = MLB_TEAM_IDS.get(team_name)
-    if not team_id:
-        return get_backup_roster(team_name)
-    url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster?rosterType=active"
-    try:
-        response = requests.get(url).json()
-        roster = response.get('roster', [])
-        players = []
-        for p in roster:
-            person = p.get('person', {})
-            pos = p.get('position', {})
-            if pos.get('code') != '1' and person.get('fullName'):
-                players.append({
-                    "name": person['fullName'],
-                    "hand": "LHB" if person.get('batSide', {}).get('code') == 'L' else "RHB"
-                })
-        return players if players else get_backup_roster(team_name)
-    except Exception:
-        return get_backup_roster(team_name)
-
-def get_backup_roster(team_name):
-    if "Royals" in team_name:
-        return [
-            {"name": "Jac Caglianone", "hand": "LHB"}, {"name": "Luke Maile", "hand": "RHB"}, 
-            {"name": "Nick Loftin", "hand": "RHB"}, {"name": "Salvador Perez", "hand": "RHB"},
-            {"name": "Kameron Misner", "hand": "LHB"}, {"name": "Michael Massey", "hand": "LHB"}
-        ]
-    return [
-        {"name": "Andrés Chaparro", "hand": "RHB"}, {"name": "CJ Abrams", "hand": "LHB"}, 
-        {"name": "Curtis Mead", "hand": "RHB"}
-    ]
-
-# --- 4. REAL STATCAST LIVE DATA PIPELINE ---
-@st.cache_data(ttl=600)
-def fetch_real_season_statcast():
-    """Fetches real-season metrics to replace random calculations."""
-    try:
-        # Pulls current season leaderboards from bref/statcast wrappers
-        df = batting_stats_bref(2026)
-        return df
-    except Exception:
-        return None
-
-def highlight_slam(row):
-    styles = [''] * len(row)
-    try:
-        slam_val = float(row['💥 SLAM Index'])
-        brl_val = float(row['Brl %'])
-        hh_val = float(row['HH %'])
-        gb_val = float(row['GB %'])
-        bbe_val = int(row['BBE'])
-        
-        if bbe_val < 45:
-            for i in range(len(row)):
-                styles[i] = 'background-color: #22222b; color: #7c7c8c; font-style: italic; opacity: 0.5;'
-            return styles
-            
-        if slam_val >= 70.0 and brl_val >= 10.0 and hh_val >= 35.0 and gb_val <= 35.0:
-            for i in range(len(row)):
-                styles[i] = 'background-color: #0f401b; color: #a3ffb4; font-weight: bold;'
-        elif slam_val < 45.0 or brl_val < 7.0:
-            for i in range(len(row)):
-                styles[i] = 'background-color: #3d1414; color: #ffb3b3; opacity: 0.8;'
-    except:
-        pass
-    return styles
-
-# --- 5. APPLICATION RUNNER ---
-games =
+                "game_id": g
