@@ -89,21 +89,21 @@ def highlight_slam(row):
         bbe_val = int(row['BBE'])
         match_val = row['Top 3 Matchup']
         
-        # 🛡️ Small sample alert override
+        # Filter 1: Low Sample Size Shield
         if bbe_val < 45:
             for i in range(len(row)):
                 styles[i] = 'background-color: #22222b; color: #7c7c8c; font-style: italic; opacity: 0.5;'
             return styles
             
-        # 🌲 Golden Premium Target (Checklist cleared + Arsenal Mastery)
+        # Filter 2: Premium Target Box (Clears strict minimums + Arsenal Advantage)
         if slam_val >= 75.0 and brl_val >= 10.0 and hh_val >= 35.0 and gb_val <= 35.0 and match_val == "🔥 ELITE":
             for i in range(len(row)):
                 styles[i] = 'background-color: #0f401b; color: #a3ffb4; font-weight: bold; border: 2px solid #a3ffb4;'
-        # Standard green success row
+        # Filter 3: Standard Target Clear
         elif slam_val >= 70.0 and brl_val >= 10.0 and gb_val <= 35.0:
             for i in range(len(row)):
                 styles[i] = 'background-color: #1b4d22; color: #deff9a; font-weight: bold;'
-        # Faded low-intent profile rows
+        # Filter 4: Under target / Heavy ground ball risk
         elif slam_val < 45.0 or brl_val < 10.0 or gb_val > 42.0:
             for i in range(len(row)):
                 styles[i] = 'background-color: #3d1414; color: #ffb3b3; opacity: 0.7;'
@@ -174,23 +174,23 @@ if games:
                     
                     base_score = (brl * 3.0) + (hh * 0.4) + (pull_air * 0.6) + (swsp * 0.3)
                     
-                    # Hard Intent Filters
+                    # Core Intent Constraints
                     if brl < 10.0: base_score *= 0.5
                     if pull_air < 15.0: base_score *= 0.6
                     if hh < 35.0: base_score *= 0.7
                     if gb > 35.0: base_score *= 0.6
                     if ld > 22.0: base_score *= 0.8 
                     
-                    # Arsenal Scoring Matchups
+                    # Arsenal Multipliers
                     if pitch_matchup_rating == "🔥 ELITE": base_score *= 1.25  
                     elif pitch_matchup_rating == "✅ Good": base_score *= 1.10  
                     elif pitch_matchup_rating == "⚠️ Cold": base_score *= 0.65  
                     
-                    # Platoon Advantages
+                    # Hand Split Platoon Adjustments
                     if (b['hand'] == "LHB" and p_throws == "R") or (b['hand'] == "RHB" and p_throws == "L"):
                         base_score *= 1.15
                         
-                    # BBE Volume Checks
+                    # Volume Stability Scaling
                     if bbe < 45:
                         base_score *= 0.40  
                     elif bbe >= 130:
@@ -203,3 +203,26 @@ if games:
                         "Top 3 Matchup": pitch_matchup_rating, "Brl %": brl, "PullAir %": pull_air, 
                         "HH %": hh, "LD %": ld, "GB %": gb, "SwSp %": swsp, "FB/HR %": fb_hr, "EV (MPH)": ev
                     })
+                
+                if processed_rows:
+                    df_lineup = pd.DataFrame(processed_rows).set_index('Batter Name')
+                    
+                    col_order = ["Hand", "BBE", "💥 SLAM Index", "Top 3 Matchup", "Brl %", "PullAir %", "HH %", "LD %", "GB %", "SwSp %", "FB/HR %", "EV (MPH)"]
+                    df_lineup = df_lineup[col_order]
+                    
+                    styled_lineup = df_lineup.style.format({
+                        "BBE": "{:d}", "💥 SLAM Index": "{:.1f}", "Brl %": "{:.1f}", "PullAir %": "{:.1f}",
+                        "HH %": "{:.1f}", "LD %": "{:.1f}", "GB %": "{:.1f}", "SwSp %": "{:.1f}", 
+                        "FB/HR %": "{:.1f}", "EV (MPH)": "{:.1f}"
+                    }).apply(highlight_slam, axis=1)
+                    
+                    st.dataframe(styled_lineup, use_container_width=True)
+                else:
+                    st.warning("⚠️ Roster alignment verifying.")
+                    
+            except Exception as e:
+                st.error(f"Error drawing dashboards: {e}")
+    else:
+        st.info("Please select a game with confirmed pitchers above.")
+else:
+    st.info("Waiting for today's MLB schedule feed to go live.")
