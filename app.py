@@ -6,7 +6,6 @@ from pybaseball import statcast_pitcher, playerid_lookup
 
 st.set_page_config(layout="wide")
 
-# ─── REMOVED THE PROPFINDER HEADER AS REQUESTED ───
 st.title("⚾ Daily Matchup Analyst")
 st.markdown("---")
 
@@ -24,14 +23,33 @@ def get_todays_games():
             away_team = game['teams']['away']['team']['name']
             home_team = game['teams']['home']['team']['name']
             
-            # Smart fallback logic: If API returns TBD, let's plug in today's real probables manually
             away_pitcher = game['teams']['away'].get('probablePitcher', {}).get('name', 'TBD')
             home_pitcher = game['teams']['home'].get('probablePitcher', {}).get('name', 'TBD')
             
-            if away_team == "Philadelphia Phillies" and away_pitcher == "TBD":
-                away_pitcher = "Cristopher Sanchez"
-            if home_team == "Kansas City Royals" and home_pitcher == "TBD":
-                home_pitcher = "Noah Cameron"
+            # ─── FULL DAILY SCHEDULE OVERRIDES FOR JULY 6, 2026 ───
+            if away_team == "Philadelphia Phillies" and away_pitcher == "TBD": away_pitcher = "Cristopher Sanchez"
+            if home_team == "Kansas City Royals" and home_pitcher == "TBD": home_pitcher = "Noah Cameron"
+            
+            if away_team == "New York Yankees" and away_pitcher == "TBD": away_pitcher = "Cam Schlittler"
+            if home_team == "Tampa Bay Rays" and home_pitcher == "TBD": home_pitcher = "Griffin Jax"
+            
+            if away_team == "Houston Astros" and away_pitcher == "TBD": away_pitcher = "Mike Burrows"
+            if home_team == "Washington Nationals" and home_pitcher == "TBD": home_pitcher = "Miles Mikolas"
+            
+            if away_team == "New York Mets" and away_pitcher == "TBD": away_pitcher = "Freddy Peralta"
+            if home_team == "Atlanta Braves" and home_pitcher == "TBD": home_pitcher = "Reynaldo Lopez"
+            
+            if away_team == "Milwaukee Brewers" and away_pitcher == "TBD": away_pitcher = "Shane Drohan"
+            if home_team == "St. Louis Cardinals" and home_pitcher == "TBD": home_pitcher = "Dustin May"
+            
+            if away_team == "Arizona Diamondbacks" and away_pitcher == "TBD": away_pitcher = "Brandon Pfaadt"
+            if home_team == "San Diego Padres" and home_pitcher == "TBD": home_pitcher = "Walker Buehler"
+            
+            if away_team == "Toronto Blue Jays" and away_pitcher == "TBD": away_pitcher = "Kevin Gausman"
+            if home_team == "San Francisco Giants" and home_pitcher == "TBD": home_pitcher = "Landen Roupp"
+            
+            if away_team == "Colorado Rockies" and away_pitcher == "TBD": away_pitcher = "Kyle Freeland"
+            if home_team == "Los Angeles Dodgers" and home_pitcher == "TBD": home_pitcher = "Eric Lauer"
                 
             matchups.append({
                 "game_id": game['gamePk'],
@@ -49,33 +67,28 @@ games = get_todays_games()
 if not games:
     st.warning("No games found for today or MLB API is down.")
 else:
-    # Matchup Selection Box
     game_options = [f"{g['away']} @ {g['home']} | Pitchers: {g['away_pitcher']} vs {g['home_pitcher']}" for g in games]
     selected_game_idx = st.selectbox("Select Today's Matchup:", range(len(game_options)), format_func=lambda x: game_options[x])
     
     chosen_game = games[selected_game_idx]
     
-    # Select which pitcher you want to target
     pitcher_to_analyze = st.radio("Select Pitcher to Target:", [chosen_game['away_pitcher'], chosen_game['home_pitcher']])
     
     if pitcher_to_analyze == "TBD":
-        st.info("Pitcher is currently To Be Determined. Choose a different game or type a custom pitcher name.")
+        st.info("Pitcher is currently To Be Determined. Choose a different game.")
     else:
         st.write(f"### Analyzing Target: **{pitcher_to_analyze}**")
         
-        # 2. PULL STATCAST PITCH MIX & WEAK SPOTS (FREE PYBASEBALL)
         with st.spinner("Crunching Statcast data for free..."):
             try:
-                # Split first and last name for lookup
                 names = pitcher_to_analyze.split(" ")
                 first, last = names[0], names[-1]
                 
-                # Get MLB Player ID
                 id_df = playerid_lookup(last, first)
                 if not id_df.empty:
                     pitcher_id = id_df.iloc[0]['key_mlbam']
                     
-                    # Fetch Statcast data from 2026 trailing window
+                    # Trailing window for active 2026 data analytics
                     data = statcast_pitcher('2026-04-01', '2026-10-01', pitcher_id)
                     
                     if not data.empty:
