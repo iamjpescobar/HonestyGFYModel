@@ -6,7 +6,8 @@ from pybaseball import statcast_pitcher, playerid_lookup
 
 st.set_page_config(layout="wide")
 
-st.title("⚾ Daily Matchup Analyst")
+# 🧪 Corrected Brand Title
+st.title("Los Cappers Lab 🧪")
 st.markdown("---")
 
 # Simulated lookup database for projected lineups to avoid API restrictions
@@ -25,6 +26,11 @@ LINEUPS = {
         {"name": "Yandy Diaz", "hand": "RHB", "ba": 0.291, "woba": 0.360, "k_pct": 14.1, "ev": 92.1},
         {"name": "Brandon Lowe", "hand": "LHB", "ba": 0.245, "woba": 0.341, "k_pct": 25.5, "ev": 90.8},
         {"name": "Randy Arozarena", "hand": "RHB", "ba": 0.266, "woba": 0.352, "k_pct": 22.0, "ev": 91.4}
+    ],
+    "New York Yankees": [
+        {"name": "Anthony Volpe", "hand": "RHB", "ba": 0.265, "woba": 0.320, "k_pct": 21.2, "ev": 88.9},
+        {"name": "Juan Soto", "hand": "LHB", "ba": 0.315, "woba": 0.435, "k_pct": 14.5, "ev": 94.2},
+        {"name": "Aaron Judge", "hand": "RHB", "ba": 0.322, "woba": 0.460, "k_pct": 24.1, "ev": 96.5}
     ]
 }
 
@@ -52,14 +58,14 @@ def get_todays_games():
     except:
         return []
 
-# Apply PropFinder style grid styling highlights
+# PropFinder style color scaling engine
 def highlight_props(val):
     try:
         num = float(val)
-        if num >= 0.330 or num >= 92.0: # High BA or high exit velocity = great for hitter
-            return 'background-color: #1b4d22; color: white;' # Dark Green
-        elif num <= 0.230 or num <= 12.0: # Weak hitter stats = great for pitcher
-            return 'background-color: #5c1d1d; color: white;' # Dark Red
+        if num >= 0.310 or num >= 92.0: # Elite target metrics (Batter edge)
+            return 'background-color: #1b4d22; color: white;' # Green
+        elif num <= 0.230 or num <= 12.0: # Poor target metrics (Pitcher edge)
+            return 'background-color: #5c1d1d; color: white;' # Red
     except ValueError:
         pass
     return ''
@@ -90,33 +96,31 @@ if games:
                     data = statcast_pitcher('2026-04-01', '2026-10-01', pitcher_id)
                     
                     if not data.empty:
-                        # 🏛️ TOP SECTION: Pitcher Performance Splits
                         st.markdown("### 🪓 Pitcher Splitting Profiles")
                         
-                        # Generate genuine splits from the raw tracking data feed
                         lhb_data = data[data['p_throws'] == 'L']
                         rhb_data = data[data['p_throws'] == 'R']
                         
                         splits_summary = pd.DataFrame({
                             "Split Zone": ["vs LHB", "vs RHB", "Overall Season"],
                             "Pitches Thrown": [len(lhb_data), len(rhb_data), len(data)],
-                            "Estimated Whiff %": [32.2, 26.0, 28.5], # Baselines matching layout metrics
+                            "Estimated Whiff %": [32.2, 26.0, 28.5], 
                             "Strikeout %": [36.6, 26.0, 28.5]
                         }).set_index("Split Zone")
                         st.dataframe(splits_summary)
                         
                         st.markdown("---")
                         
-                        # 🏟️ BOTTOM SECTION: Opposing Batter Lineup Matchup
                         st.markdown(f"### ⚔️ Confirmed Lineup Matchup vs. **{opposing_team}**")
                         st.caption("🟢 Green = Favorable for Batter (Over Targets) | 🔴 Red = Favorable for Pitcher (Under Targets)")
                         
                         lineup_data = LINEUPS.get(opposing_team, LINEUPS["Kansas City Royals"])
                         df_lineup = pd.DataFrame(lineup_data)
                         
-                        # Clean column headers and apply custom conditional color-grid formatting
                         df_lineup.columns = ['Batter Name', 'Hand', 'Batting AVG', 'wOBA Metric', 'K % Rate', 'Exit Velo (MPH)']
-                        styled_lineup = df_lineup.set_index('Batter Name').style.applymap(highlight_props)
+                        
+                        # Apply modern mapping style
+                        styled_lineup = df_lineup.set_index('Batter Name').style.map(highlight_props)
                         
                         st.dataframe(styled_lineup, use_container_width=True)
                         
