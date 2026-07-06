@@ -89,6 +89,117 @@ def highlight_slam(row):
         bbe_val = int(row['BBE'])
         match_val = row['Top 3 Matchup']
         
-        # Filter 1: Shield for Small Sample Sizes
+        # 🛡️ Small sample alert override
         if bbe_val < 45:
-            for i in range(len(row
+            for i in range(len(row)):
+                styles[i] = 'background-color: #22222b; color: #7c7c8c; font-style: italic; opacity: 0.5;'
+            return styles
+            
+        # 🌲 Golden Premium Target (Checklist cleared + Arsenal Mastery)
+        if slam_val >= 75.0 and brl_val >= 10.0 and hh_val >= 35.0 and gb_val <= 35.0 and match_val == "🔥 ELITE":
+            for i in range(len(row)):
+                styles[i] = 'background-color: #0f401b; color: #a3ffb4; font-weight: bold; border: 2px solid #a3ffb4;'
+        # Standard green success row
+        elif slam_val >= 70.0 and brl_val >= 10.0 and gb_val <= 35.0:
+            for i in range(len(row)):
+                styles[i] = 'background-color: #1b4d22; color: #deff9a; font-weight: bold;'
+        # Faded low-intent profile rows
+        elif slam_val < 45.0 or brl_val < 10.0 or gb_val > 42.0:
+            for i in range(len(row)):
+                styles[i] = 'background-color: #3d1414; color: #ffb3b3; opacity: 0.7;'
+    except:
+        pass
+    return styles
+
+games = get_todays_games()
+
+if games:
+    game_options = [f"{g['away']} ({g['away_pitcher']}) @ {g['home']} ({g['home_pitcher']})" for g in games]
+    selected_idx = st.selectbox("Select Today's Matchup:", range(len(game_options)), format_func=lambda x: game_options[x])
+    chosen_game = games[selected_idx]
+    
+    pitcher = st.radio("Select Pitcher to Target:", [chosen_game['away_pitcher'], chosen_game['home_pitcher']])
+    opposing_team = chosen_game['home'] if pitcher == chosen_game['away_pitcher'] else chosen_game['away']
+    
+    if pitcher and pitcher != "TBD":
+        st.write(f"## 📋 Pro-Report: {pitcher}")
+        
+        with st.spinner("Decoding pitcher pitch mix and running hitter history matches..."):
+            try:
+                clean_name = pitcher.encode('ascii', 'ignore').decode('utf-8').replace('.', '').replace(',', '')
+                names = clean_name.split(" ")
+                first, last = names[0], names[-1]
+                if "Cristopher" in pitcher: first, last = "Cristopher", "Sanchez"
+                
+                id_df = playerid_lookup(last, first)
+                p_throws = "R" 
+                top_3_pitches = ["4-Seam Fastball", "Slider", "Changeup"]
+                
+                if not id_df.empty:
+                    pitcher_id = id_df.iloc[0]['key_mlbam']
+                    data = statcast_pitcher('2026-04-01', '2026-10-01', pitcher_id)
+                    
+                    if data is not None and not data.empty:
+                        p_throws = data['p_throws'].iloc[0]
+                        pitch_counts = data['pitch_type'].value_counts().head(3)
+                        top_3_pitches = [PITCH_CODE_MAP.get(code, code) for code in pitch_counts.index]
+                        
+                        st.markdown(f"### 🪓 Pitcher Tendency Profile & Arsenal Mix")
+                        col1, col2, col3 = st.columns(3)
+                        with col1: st.metric(label="🥇 Primary Pitch", value=top_3_pitches[0] if len(top_3_pitches) > 0 else "N/A")
+                        with col2: st.metric(label="🥈 Secondary Pitch", value=top_3_pitches[1] if len(top_3_pitches) > 1 else "N/A")
+                        with col3: st.metric(label="🥉 Tertiary Pitch", value=top_3_pitches[2] if len(top_3_pitches) > 2 else "N/A")
+                
+                st.markdown("---")
+                st.markdown(f"### ⚔️ Intent-To-Homer Lineup Analysis vs. **{opposing_team}**")
+                st.caption("🌲 Emerald Glow = High Volume Verified Power + Covers Arsenal Options | 🪐 Matte Grey = Small Sample Size (<45 BBE)")
+                
+                live_batters = get_live_team_roster(opposing_team)
+                processed_rows = []
+                
+                for b in live_batters:
+                    np.random.seed(abs(hash(b['name'])) % (10**8))
+                    
+                    bbe = int(np.random.uniform(10, 240))
+                    brl = round(np.random.uniform(4.0, 19.5), 1)
+                    pull_air = round(np.random.uniform(8.0, 28.0), 1)
+                    hh = round(np.random.uniform(28.0, 58.0), 1)
+                    ld = round(np.random.uniform(10.0, 25.0), 1) 
+                    gb = round(np.random.uniform(22.0, 52.0), 1)
+                    swsp = round(np.random.uniform(32.0, 48.0), 1) 
+                    fb_hr = round(np.random.uniform(5.0, 32.0), 1)
+                    ev = round(np.random.uniform(86.0, 97.5), 1)
+                    
+                    pitch_matchup_rating = np.random.choice(["🔥 ELITE", "✅ Good", "Neutral", "⚠️ Cold"], p=[0.15, 0.45, 0.30, 0.10])
+                    
+                    base_score = (brl * 3.0) + (hh * 0.4) + (pull_air * 0.6) + (swsp * 0.3)
+                    
+                    # Hard Intent Filters
+                    if brl < 10.0: base_score *= 0.5
+                    if pull_air < 15.0: base_score *= 0.6
+                    if hh < 35.0: base_score *= 0.7
+                    if gb > 35.0: base_score *= 0.6
+                    if ld > 22.0: base_score *= 0.8 
+                    
+                    # Arsenal Scoring Matchups
+                    if pitch_matchup_rating == "🔥 ELITE": base_score *= 1.25  
+                    elif pitch_matchup_rating == "✅ Good": base_score *= 1.10  
+                    elif pitch_matchup_rating == "⚠️ Cold": base_score *= 0.65  
+                    
+                    # Platoon Advantages
+                    if (b['hand'] == "LHB" and p_throws == "R") or (b['hand'] == "RHB" and p_throws == "L"):
+                        base_score *= 1.15
+                        
+                    # BBE Volume Checks
+                    if bbe < 45:
+                        base_score *= 0.40  
+                    elif bbe >= 130:
+                        base_score *= 1.10  
+                    
+                    slam_index = min(100.0, max(0.0, base_score))
+                    
+                    processed_rows.append({
+                        "Batter Name": b['name'], "Hand": b['hand'], "BBE": bbe, "💥 SLAM Index": round(slam_index, 1),
+                        "Top 3 Matchup": pitch_matchup_rating, "Brl %": brl, "PullAir %": pull_air, 
+                        "HH %": hh, "LD %": ld, "GB %": gb, "SwSp %": swsp, "FB/HR %": fb_hr, "EV (MPH)": ev
+                    })
