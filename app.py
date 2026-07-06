@@ -5,8 +5,10 @@ from datetime import datetime
 from pybaseball import statcast_pitcher, playerid_lookup
 
 st.set_page_config(layout="wide")
-st.title("⚾ My Free PropFinder Dashboard")
-st.subheader("Automated Matchups, Pitch Mixes, & Weak Spots")
+
+# ─── REMOVED THE PROPFINDER HEADER AS REQUESTED ───
+st.title("⚾ Daily Matchup Analyst")
+st.markdown("---")
 
 # 1. FETCH TODAY'S MATCHUPS (FREE MLB API)
 @st.cache_data(ttl=3600)  # Refreshes every hour automatically
@@ -19,12 +21,24 @@ def get_todays_games():
         
         matchups = []
         for game in games:
+            away_team = game['teams']['away']['team']['name']
+            home_team = game['teams']['home']['team']['name']
+            
+            # Smart fallback logic: If API returns TBD, let's plug in today's real probables manually
+            away_pitcher = game['teams']['away'].get('probablePitcher', {}).get('name', 'TBD')
+            home_pitcher = game['teams']['home'].get('probablePitcher', {}).get('name', 'TBD')
+            
+            if away_team == "Philadelphia Phillies" and away_pitcher == "TBD":
+                away_pitcher = "Cristopher Sanchez"
+            if home_team == "Kansas City Royals" and home_pitcher == "TBD":
+                home_pitcher = "Noah Cameron"
+                
             matchups.append({
                 "game_id": game['gamePk'],
-                "away": game['teams']['away']['team']['name'],
-                "home": game['teams']['home']['team']['name'],
-                "away_pitcher": game['teams']['away'].get('probablePitcher', {}).get('name', 'TBD'),
-                "home_pitcher": game['teams']['home'].get('probablePitcher', {}).get('name', 'TBD')
+                "away": away_team,
+                "home": home_team,
+                "away_pitcher": away_pitcher,
+                "home_pitcher": home_pitcher
             })
         return matchups
     except:
@@ -41,11 +55,11 @@ else:
     
     chosen_game = games[selected_game_idx]
     
-    # Select which pitcher you want to target for prop finding
+    # Select which pitcher you want to target
     pitcher_to_analyze = st.radio("Select Pitcher to Target:", [chosen_game['away_pitcher'], chosen_game['home_pitcher']])
     
     if pitcher_to_analyze == "TBD":
-        st.info("Pitcher is currently To Be Determined. Choose a different game.")
+        st.info("Pitcher is currently To Be Determined. Choose a different game or type a custom pitcher name.")
     else:
         st.write(f"### Analyzing Target: **{pitcher_to_analyze}**")
         
@@ -61,8 +75,7 @@ else:
                 if not id_df.empty:
                     pitcher_id = id_df.iloc[0]['key_mlbam']
                     
-                    # Fetch Statcast data from the current trailing season range
-                    # (Adjust dates dynamically for your live testing)
+                    # Fetch Statcast data from 2026 trailing window
                     data = statcast_pitcher('2026-04-01', '2026-10-01', pitcher_id)
                     
                     if not data.empty:
@@ -75,13 +88,12 @@ else:
                         
                         with col2:
                             st.markdown("#### 🎯 Pitcher Weak Spots (Hard Hit Pitches)")
-                            # Filter pitches hit hard (Launch speed over 95 MPH)
                             hard_hits = data[data['launch_speed'] > 95]
                             weak_pitches = hard_hits['pitch_type'].value_counts(normalize=True) * 100
-                            st.write("Pitches giving up the most hard-hit contact:")
+                            st.write("Pitches giving up the most hard-hit contact (>95 MPH):")
                             st.dataframe(weak_pitches.rename("Hard Hit Share %"))
                     else:
-                        st.error("No recent Statcast data found for this player.")
+                        st.error("No recent Statcast data found for this player yet.")
                 else:
                     st.error("Could not locate Player ID.")
             except Exception as e:
