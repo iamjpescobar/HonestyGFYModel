@@ -145,19 +145,21 @@ for b in live_batters:
     })
 
 # Convert list to DataFrame BEFORE applying styles
+# --- Cleaned up display logic ---
 if processed_rows:
     df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
-   if processed_rows:
-    df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
-    # Apply styling to the DataFrame
-    styled_df = df_lineup.style.map(highlight_slam)
-    st.dataframe(styled_df, use_container_width=True)
-                df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
-                
-                selected_scout = st.selectbox(
-                    "🔍 Click to inspect detailed historical performance breakdown:",
-                    ["-- Active Lineup Roster Overview --"] + list(df_lineup.index)
-                )
+    
+    # 1. Show the selection box
+    selected_scout = st.selectbox(
+        "🔍 Click to inspect detailed historical performance breakdown:",
+        ["-- Active Lineup Roster Overview --"] + list(df_lineup.index)
+    )
+
+    # 2. Update session state
+    if selected_scout != "-- Active Lineup Roster Overview --":
+        st.session_state.selected_batter = selected_scout
+    else:
+        st.session_state.selected_batter = None
                 
                 if selected_scout != "-- Active Lineup Roster Overview --":
                     st.session_state.selected_batter = selected_scout
