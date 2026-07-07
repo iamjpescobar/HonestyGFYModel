@@ -23,8 +23,7 @@ MLB_TEAM_IDS = {
     "New York Yankees": 147, "Athletics": 131, "Philadelphia Phillies": 143,
     "Pittsburgh Pirates": 134, "San Diego Padres": 135, "San Francisco Giants": 137,
     "Seattle Mariners": 136, "St. Louis Cardinals": 138, "Tampa Bay Rays": 139,
-    "Texas Rangers": 140, "Toronto Blue Jays": 141, "Washington Nationals": 120
-}
+    "Texas Rangers": 140, "Toronto Blue Jays": 141, "Washington Nationals": 120}
 
 PITCH_CODE_MAP = {
     'FF': '4-Seam Fastball', 'SL': 'Slider', 'CH': 'Changeup', 
