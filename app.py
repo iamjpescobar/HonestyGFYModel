@@ -349,9 +349,9 @@ for b in live_batters:
         if processed_rows:
             df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
                 
-                selected_scout = st.selectbox(
-                    "🔍 Click to inspect detailed historical performance breakdown:",
-                    ["-- Active Lineup Roster Overview --"] + list(df_lineup.index)
+            selected_scout = st.selectbox(
+                "🔍 Click to inspect detailed historical performance breakdown:",
+                ["-- Active Lineup Roster Overview --"] + list(df_lineup.index)
                 )
                 
                 if selected_scout != "-- Active Lineup Roster Overview --":
