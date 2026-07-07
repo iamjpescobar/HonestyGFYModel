@@ -290,29 +290,28 @@ if games:
             for b in live_batters:
                 b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
                 
-                match = pd.DataFrame()
-                if not real_stats_df.empty:
-                    match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean]
+                # 1. Fetch/Simulate metrics
+                # Ensure these match your data structure for ISO, Bat Speed, and 350ft+ counts
+                iso_val = float(match.get('ISO', [0.150])[0]) # Weighted 3-season ISO
+                bat_speed = float(match.get('BatSpeed', [70.0])[0])
+                deep_flight = int(match.get('350ft_plus_count', [0])[0]) # 350ft+ in last 25 games
                 
-                if not match.empty:
-                    bbe = int(match['AB'].iloc[0])
-                    brl = round(float(match.get('Barrel%', [8.5])[0]), 1) if 'Barrel%' in match.columns else 8.5
-                    hh = round(float(match.get('HardHit%', [40.0])[0]), 1) if 'HardHit%' in match.columns else 40.0
-                    gb = round(float(match.get('GB%', [42.0])[0]), 1) if 'GB%' in match.columns else 42.0
-                    ld = round(float(match.get('LD%', [20.0])[0]), 1) if 'LD%' in match.columns else 20.0
-                    pull_air = round(float(match.get('FB%', [35.0])[0]), 1) if 'FB%' in match.columns else 35.0
-                else:
-                    np.random.seed(abs(hash(b['name'])) % (10**8))
-                    bbe = int(np.random.uniform(30, 240))
-                    brl = round(np.random.uniform(4.0, 14.0), 1)
-                    hh = round(np.random.uniform(25.0, 50.0), 1)
-                    gb = round(np.random.uniform(35.0, 48.0), 1)
-                    ld = round(np.random.uniform(15.0, 25.0), 1)
-                    pull_air = round(np.random.uniform(10.0, 25.0), 1)
+                # 2. Base Calculation
+                # Rewarding Hard Hit Fly Balls (HH * FB) and penalizing excessive Line Drives
+                # LD% > 22% acts as a dampener to shift focus to pure elevation power
+                ld_penalty = 1.2 if ld > 22.0 else 1.0
                 
-                match_rating = np.random.choice(["🔥 ELITE", "✅ Good", "Neutral", "⚠️ Cold"], p=[0.15, 0.45, 0.30, 0.10])
+                # The "Wizard Sauce" Formula
+                # We prioritize (Barrel * 3.5) + (HardHit * 0.8) + (FB * 0.5) 
+                # And dampen the score if the LD% is too high
+                base_score = ((brl * 3.5) + (hh * 0.8) + (pull_air * 0.5) - (gb * 0.2)) / ld_penalty
                 
-                base_score = (brl * 3.5) + (hh * 0.5) + (pull_air * 0.3) - (gb * 0.2)
+                # 3. Additive "Power Ceiling" Bonuses
+                if bat_speed >= 72.0: base_score += 5.0
+                if deep_flight > 5: base_score += (deep_flight * 1.5)
+                if iso_val > 0.200: base_score += 7.0
+                
+                # Apply multipliers
                 if match_rating == "✅ Good": base_score *= 1.15
                 if bbe > 120: base_score += 8
                 
