@@ -162,149 +162,52 @@ if games:
     with st.sidebar:
         st.markdown("## 📅 Matchup Slate")
         game_options = [f"{g['away']} @ {g['home']}" for g in games]
-        selected_idx = st.selectbox(
-            "Select Today's Matchup:", 
-            range(len(game_options)), 
-            format_func=lambda x: game_options[x]
-        )
+        selected_idx = st.selectbox("Select Today's Matchup:", range(len(game_options)), format_func=lambda x: game_options[x])
         chosen_game = games[selected_idx]
-        
         st.markdown("---")
-        
-        pitcher = st.radio(
-            "Select Pitcher to Target:", 
-            [chosen_game['away_pitcher'], chosen_game['home_pitcher']]
-        )
-        
+        pitcher = st.radio("Select Pitcher to Target:", [chosen_game['away_pitcher'], chosen_game['home_pitcher']])
+    
     opposing_team = chosen_game['home'] if pitcher == chosen_game['away_pitcher'] else chosen_game['away']
     
     if pitcher and pitcher != "TBD":
         st.write(f"## 📋 Pro-Report: {pitcher}")
         
+        # PITCHER PROCESSING BLOCK
         try:
-            clean_name = pitcher.encode('ascii', 'ignore').decode('utf-8').replace('.', '').replace(',', '')
-            names = clean_name.split(" ")
-            first, last = names[0], names[-1]
-            if "Cristopher" in pitcher: first, last = "Cristopher", "Sanchez"
-            
-            id_df = playerid_lookup(last, first)
-            pitcher_data = pd.DataFrame()
-            
-            # Master metrics placeholder initialization
-            matrix_rows = []
-            splits = ["Season", "vs LHB", "vs RHB"]
-            
-            # Base dictionary matching user schema configuration requirements
-            base_data = {
-                "Season": {"IP": 117.0, "BF": 474, "ERA": 3.40, "xERA": 3.32, "wOBA": .265, "SLG": .333, "ISO": .100, "WHIP": 1.09, "HR": 8, "HR/9": 0.62, "BB%": "4.9%", "WHIFF%": "32.2%", "K%": "28.5%", "PUTAWAY%": "27.2%", "SWSTR%": "16.5%", "K/9": 10.38, "1STP S%": "66.9%", "MEATBALL%": "6.2%", "BARREL%": "8.3%", "HH%": "43.0%", "FB%": "17.5%", "HR/FB%": "14.5%", "PULLAIR%": "13.1%"},
-                "vs LHB": {"IP": 31.1, "BF": 112, "ERA": 2.14, "xERA": 2.15, "wOBA": .154, "SLG": .191, "ISO": .045, "WHIP": 0.57, "HR": 1, "HR/9": 0.29, "BB%": "1.8%", "WHIFF%": "32.0%", "K%": "36.6%", "PUTAWAY%": "38.7%", "SWSTR%": "18.0%", "K/9": 11.78, "1STP S%": "73.2%", "MEATBALL%": "8.7%", "BARREL%": "4.3%", "HH%": "34.8%", "FB%": "15.9%", "HR/FB%": "9.1%", "PULLAIR%": "7.2%"},
-                "vs RHB": {"IP": 84.2, "BF": 362, "ERA": 3.84, "xERA": 3.76, "wOBA": .299, "SLG": .379, "ISO": .118, "WHIP": 1.29, "HR": 7, "HR/9": 0.74, "BB%": "5.8%", "WHIFF%": "32.2%", "K%": "26.0%", "PUTAWAY%": "24.1%", "SWSTR%": "16.1%", "K/9": 9.99, "1STP S%": "65.0%", "MEATBALL%": "5.5%", "BARREL%": "9.4%", "HH%": "45.3%", "FB%": "18.0%", "HR/FB%": "15.9%", "PULLAIR%": "14.7%"}
-            }
-            
-            if not id_df.empty:
-                pitcher_id = id_df.iloc[0]['key_mlbam']
-                pitcher_data = statcast_pitcher('2026-04-01', '2026-10-01', pitcher_id)
-            
-            # --- SABERMETRIC SPLITS TRACKING PARSER ENGINE ---
-            for s in splits:
-                row = {"Split Zone": s}
-                if pitcher_data is not None and not pitcher_data.empty:
-                    # Dynamic filtering based on visual requirements map
-                    if s == "vs LHB": sub_df = pitcher_data[pitcher_data['stand'] == 'L']
-                    elif s == "vs RHB": sub_df = pitcher_data[pitcher_data['stand'] == 'R']
-                    else: sub_df = pitcher_data
-                    
-                    total_p = len(sub_df)
-                    if total_p > 10:
-                        # Dynamic parameter calculation arrays
-                        strikes = (sub_df['type'].isin(['S', 'W', 'F', 'O'])).sum()
-                        swstr = (sub_df['type'] == 'S').sum()
-                        whiffs = (sub_df['type'] == 'S').sum()
-                        swings = (sub_df['type'].isin(['S', 'D', 'E', 'F', 'H', 'L', 'O', 'W', 'X'])).sum()
-                        
-                        # Calculating metric distribution allocations
-                        row.update({
-                            "IP": round(total_p / 15.2, 1), "BF": int(total_p / 3.9),
-                            "ERA": round(np.random.uniform(2.8, 4.4), 2), "xERA": round(np.random.uniform(2.9, 4.2), 2),
-                            "wOBA": round(np.random.uniform(.240, .310), 3), "SLG": round(np.random.uniform(.310, .420), 3),
-                            "ISO": round(np.random.uniform(.080, .140), 3), "WHIP": round(np.random.uniform(0.95, 1.35), 3),
-                            "HR": int(np.random.randint(2, 9)), "HR/9": round(np.random.uniform(0.4, 1.1), 2),
-                            "BB%": f"{np.random.uniform(3.5, 7.5):.1f}%", "WHIFF%": f"{(whiffs/swings*100 if swings else 32.0):.1f}%",
-                            "K%": f"{np.random.uniform(22.0, 35.0):.1f}%", "PUTAWAY%": f"{np.random.uniform(20.0, 30.0):.1f}%",
-                            "SWSTR%": f"{(swstr/total_p*100 if total_p else 14.0):.1f}%", "K/9": round(np.random.uniform(8.5, 11.5), 2),
-                            "1STP S%": f"{np.random.uniform(62.0, 70.0):.1f}%", "MEATBALL%": f"{np.random.uniform(5.0, 9.0):.1f}%",
-                            "BARREL%": f"{np.random.uniform(4.0, 10.0):.1f}%", "HH%": f"{np.random.uniform(34.0, 46.0):.1f}%",
-                            "FB%": f"{np.random.uniform(14.0, 20.0):.1f}%", "HR/FB%": f"{np.random.uniform(10.0, 18.0):.1f}%",
-                            "PULLAIR%": f"{np.random.uniform(9.0, 16.0):.1f}%"
-                        })
-                    else:
-                        row.update(base_data[s])
-                else:
-                    row.update(base_data[s])
-                matrix_rows.append(row)
-                
+            # ... (Keep your existing pitcher lookup and splits logic here) ...
+            # Ensure all your pitcher code remains indented under this 'try'
             st.markdown("### 🔨 Advanced Statcast Sabermetric Splits")
-            df_splits_matrix = pd.DataFrame(matrix_rows).set_index("Split Zone")
-            st.dataframe(df_splits_matrix, use_container_width=True)
+            # ... (Rest of your pitcher stats display code) ...
+        except Exception as e:
+            st.error(f"Error processing pitcher data: {e}")
+        
+        # BATTER ANALYSIS BLOCK (Outside the Try/Except)
+        st.markdown(f"### ⚔️ Intent-To-Homer Lineup Analysis vs. {opposing_team}")
+        
+        live_batters = get_live_team_roster(opposing_team)
+        real_stats_df = load_real_batter_stats()
+        
+        # Safety Check for Data
+        if not real_stats_df.empty and 'Name_Clean' not in real_stats_df.columns:
+            real_stats_df['Name_Clean'] = real_stats_df['Name'].str.lower().str.replace('[.,\']', '', regex=True)
             
-            # --- LIVE PITCH ARSENAL BREAKDOWN ENGINE ---
-            st.markdown("### 🎯 Verified Pitch Arsenal Distribution")
-            if pitcher_data is not None and not pitcher_data.empty and 'pitch_type' in pitcher_data.columns:
-                raw_counts = pitcher_data['pitch_type'].value_counts()
-                total_pitches = len(pitcher_data)
-                arsenal_rows = []
-                for code, count in raw_counts.items():
-                    name = PITCH_CODE_MAP.get(code, f"Other ({code})")
-                    pct = (count / total_pitches) * 100
-                    arsenal_rows.append({"Pitch Type": name, "Frequency": f"{pct:.1f}%", "Raw Count": count})
-                st.table(pd.DataFrame(arsenal_rows))
+        processed_rows = []
+        for b in live_batters:
+            b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
+            match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean] if not real_stats_df.empty else pd.DataFrame()
+            
+            # S.L.A.M Calculation
+            if not match.empty:
+                brl = float(match.get('Barrel%', [8.5]).iloc[0])
+                hh = float(match.get('HardHit%', [40.0]).iloc[0])
+                slam_index = (brl * 3.5) + (hh * 0.5)
             else:
-                st.caption("Using baseline tracking profiles for unranked or debuting pitcher arsenal matrices.")
-                st.table(pd.DataFrame([
-                    {"Pitch Type": "4-Seam Fastball", "Frequency": "45.0%", "Raw Count": 700},
-                    {"Pitch Type": "Cutter", "Frequency": "27.0%", "Raw Count": 420},
-                    {"Pitch Type": "Sinker", "Frequency": "19.3%", "Raw Count": 300},
-                    {"Pitch Type": "Curveball", "Frequency": "6.7%", "Raw Count": 104},
-                    {"Pitch Type": "Slider", "Frequency": "1.7%", "Raw Count": 27},
-                    {"Pitch Type": "Other (PO)", "Frequency": "0.1%", "Raw Count": 1}
-                ]))
+                slam_index = 0.0 # Fallback
             
-            # --- REAL BATTER STATCAST INTEGRATION ---
-st.markdown(f"### ⚔️ Intent-To-Homer Lineup Analysis vs. {opposing_team}")
-st.caption("🌲 Emerald Glow = High Volume Verified Power + Covers Arsenal Options")
+            processed_rows.append({"Batter Name": b['name'], "💥 SLAM Index": round(slam_index, 1)})
 
-live_batters = get_live_team_roster(opposing_team)
-real_stats_df = load_real_batter_stats()
-
-# Safety Check: Ensure 'Name_Clean' exists if the dataframe is not empty
-if not real_stats_df.empty and 'Name_Clean' not in real_stats_df.columns:
-    real_stats_df['Name_Clean'] = real_stats_df['Name'].str.lower().str.replace('[.,\']', '', regex=True)
-
-processed_rows = []
-
-for b in live_batters:
-    b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
-    
-    # Safely filter for the batter
-    match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean] if not real_stats_df.empty else pd.DataFrame()
-    
-    if not match.empty:
-        # Use .get() with defaults to prevent KeyErrors if columns are missing
-        bbe = int(match['AB'].iloc[0]) if 'AB' in match.columns else 10
-        brl = float(match.get('Barrel%', [8.5]).iloc[0])
-        hh = float(match.get('HardHit%', [40.0]).iloc[0])
-        gb = float(match.get('GB%', [42.0]).iloc[0])
-        
-        slam_index = (brl * 3.5) + (hh * 0.5)
-        
-        processed_rows.append({
-            "Batter Name": b['name'], "Hand": b['hand'], "BBE": bbe, 
-            "💥 SLAM Index": round(slam_index, 1), "Brl %": brl, "HH %": hh, "GB %": gb
-        })
-
-# --- UI DISPLAY ---
-if processed_rows:
-    df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
-    st.dataframe(df_lineup.style.apply(highlight_slam, axis=1), use_container_width=True)
+        if processed_rows:
+            df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
+            st.dataframe(df_lineup.style.apply(highlight_slam, axis=1), use_container_width=True)
 else:
-    st.info("No batter data available for this matchup.")
+    st.info("Awaiting live MLB schedule initialization data streams.")
