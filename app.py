@@ -144,35 +144,33 @@ def highlight_slam(row):
         pass
     return styles
 
-# --- 5. APPLICATION INTERFACE AND CONTROL RUNNER ---
+## --- 5. APPLICATION INTERFACE AND CONTROL RUNNER ---
 games = get_todays_games()
 
 if games:
-    # --- MODERN TOP-ALIGNED MATCHUP TICKER ---
     st.markdown("### 📅 Today's Matchup Slate")
-    # Create horizontal tabs for each game
-    # Shorten the label to just the team abbreviation (e.g., MIL @ STL)
-# This forces the tabs to stay narrow and horizontal
-tab_labels = [f"{g['away'][:3]} @ {g['home'][:3]}" for g in games]
-tabs = st.tabs(tab_labels)
-
-# When a tab is clicked, update the session state
-for i, tab in enumerate(tabs):
-    with tab:
-        if st.button(f"Load {games[i]['away']} @ {games[i]['home']}", key=f"tab_btn_{i}"):
-            st.session_state.selected_game = games[i]
-            st.rerun()
-
-    # Initialize session state if not already done
+    
+    # Initialize session state
     if 'selected_game' not in st.session_state:
         st.session_state.selected_game = games[0]
 
+    # Create horizontal tabs for each game
+    tab_labels = [f"{g['away'][:3]} @ {g['home'][:3]}" for g in games]
+    tabs = st.tabs(tab_labels)
+
+    # Logic for tab switching
+    for i, tab in enumerate(tabs):
+        with tab:
+            if st.button(f"Load {games[i]['away']} @ {games[i]['home']}", key=f"btn_{i}"):
+                st.session_state.selected_game = games[i]
+                st.rerun()
+
+    # Get the currently selected game
     chosen_game = st.session_state.selected_game
     st.markdown(f"### Researching: {chosen_game['away']} @ {chosen_game['home']}")
     st.markdown("---")
         
-    # Ensure the radio is called once and assigned a key linked to the specific game
-    # Move this block so it is not affected by the tab loop rendering
+    # The radio button is now stable and outside the tab loop rendering
     pitcher = st.radio(
         "Select Pitcher to Target:",
         [chosen_game.get('away_pitcher'), chosen_game.get('home_pitcher')],
