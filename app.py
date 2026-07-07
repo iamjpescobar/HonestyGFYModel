@@ -309,50 +309,32 @@ else:
     processed_rows = []
 
 # --- QUALIFIED SLAM ENGINE ---
-MIN_BBE = 10
-# ... (keep your existing MIN_BRL, MIN_HH, etc. variables) ...
+# ... (MIN variables) ...
 
+# Only run if we have both live batters and valid stats
 if live_batters and not real_stats_df.empty and 'Name_Clean' in real_stats_df.columns:
     for b in live_batters:
-        b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
-        match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean]
-        
-        if not match.empty:
-            # Safely get values with defaults of 0
-            brl = float(match.get('Barrel%', [0]).iloc[0])
-            hh = float(match.get('HardHit%', [0]).iloc[0])
-            # ... (add remaining metrics with .get(..., [0])) ...
-            
-            is_qualified = (bbe >= MIN_BBE and brl >= MIN_BRL and hh >= MIN_HH)
-            status = "🔥 QUALIFIED" if is_qualified else "⚠️ NOT QUALIFIED"
-            slam_index = (brl * 2) + (hh * 1.5) + (blast * 1.5) if is_qualified else 0.0
-            
-            processed_rows.append({"Batter Name": b['name'], "💥 SLAM Index": round(slam_index, 1), "Status": status})
+        # ... (your loop logic here) ...
+        processed_rows.append({...})
 
-# --- UI DISPLAY ---
+# --- UI DISPLAY SECTION ---
 if processed_rows:
     df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
-    # ... (rest of your display code)
-else:
-    st.info("Lineup data processing complete. No batters meet the current qualification threshold.")
-
-    if st.session_state.selected_batter:
-        sb = st.session_state.selected_batter
-        if sb in df_lineup.index:
-            stats = df_lineup.loc[sb]
-            st.markdown(f"#### 📊 Detailed Scout Matrix: {sb}")
-            c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Calculated SLAM Rating", f"{stats['💥 SLAM Index']}")
-            c2.metric("Barrel Execution Rate", f"{stats['Brl %']}%")
-            c3.metric("Hard Hit Metric", f"{stats['HH %']}%")
-            c4.metric("Total BBE Sample Size", f"{stats['BBE']}")
-            st.markdown("---")
-
-    styled_df = df_lineup.style.format({
-        "💥 SLAM Index": "{:.1f}", "Brl %": "{:.1f}%",
-        "HH %": "{:.1f}%", "Blast %": "{:.1f}%"
-    }).apply(highlight_slam, axis=1)
     
+    # Selection logic
+    selected_scout = st.selectbox("🔍 Select Batter:", ["-- Overview --"] + list(df_lineup.index))
+    if selected_scout != "-- Overview --":
+        st.session_state.selected_batter = selected_scout
+    
+    # Detailed Matrix
+    if st.session_state.selected_batter and st.session_state.selected_batter in df_lineup.index:
+        sb = st.session_state.selected_batter
+        stats = df_lineup.loc[sb]
+        st.markdown(f"#### 📊 Detailed Scout Matrix: {sb}")
+        # ... (your metric columns) ...
+
+    # Styled Table
+    styled_df = df_lineup.style.format({...}).apply(highlight_slam, axis=1)
     st.dataframe(styled_df, use_container_width=True)
 else:
-    st.info("Awaiting live MLB schedule initialization data streams.")
+    st.info("Awaiting valid data streams or no batters qualify for the S.L.A.M. Index.")
