@@ -292,7 +292,6 @@ if games:
             real_stats_df = load_real_batter_stats()
             processed_rows = []
             
-            for b in live_batters:
             # --- QUALIFIED SLAM ENGINE ---
 # Threshold Requirements
 MIN_BBE = 10
@@ -304,12 +303,13 @@ MIN_PULL_AIR = 10.0
 MIN_FB_HR = 30.0
 MIN_BLAST = 20.0
 
+# Process the roster with strict data verification
 for b in live_batters:
     b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
     match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean]
     
     if not match.empty:
-        # Extract verified stats (using .get with default 0 if column missing)
+        # Extract verified stats from your real data source
         brl = float(match.get('Barrel%', [0]).iloc[0])
         hh = float(match.get('HardHit%', [0]).iloc[0])
         ld = float(match.get('LD%', [0]).iloc[0])
@@ -319,20 +319,15 @@ for b in live_batters:
         blast = float(match.get('Blast%', [0]).iloc[0])
         bbe = int(match.get('BBE', [0]).iloc[0])
         
-        # Qualification Logic: ALL must be true for the status to be "🔥 QUALIFIED"
+        # Qualification Logic: ALL criteria must be met
         is_qualified = (
-            bbe >= MIN_BBE and
-            brl >= MIN_BRL and 
-            hh >= MIN_HH and 
-            ld <= MAX_LD and 
-            fb >= MIN_FB and 
-            pull_air >= MIN_PULL_AIR and 
-            fb_hr >= MIN_FB_HR and 
-            blast >= MIN_BLAST
+            bbe >= MIN_BBE and brl >= MIN_BRL and hh >= MIN_HH and 
+            ld <= MAX_LD and fb >= MIN_FB and pull_air >= MIN_PULL_AIR and 
+            fb_hr >= MIN_FB_HR and blast >= MIN_BLAST
         )
         
         if is_qualified:
-            # Verified calculation (No randomness)
+            # Verified calculation (No random seeds/uniforms)
             slam_index = (brl * 2) + (hh * 1.5) + (blast * 1.5)
             status = "🔥 QUALIFIED"
         else:
@@ -348,7 +343,6 @@ for b in live_batters:
             "HH %": hh,
             "Blast %": blast
         })
-                })
                 
             if processed_rows:
                 df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
