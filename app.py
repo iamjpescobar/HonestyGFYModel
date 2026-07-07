@@ -355,19 +355,22 @@ if games:
                     if sb in df_lineup.index:
                         stats = df_lineup.loc[sb]
                         st.markdown(f"#### 📊 Detailed Scout Matrix: {sb}")
-                        
-                        # Fixes the Indentation/Naming error:
                         c1, c2, c3, c4 = st.columns(4)
-                        
-                        # Use Streamlit's native container styling for maximum compatibility
+
+                        # Logic to determine if it's "good" (green) or "bad" (red)
+                        # We use the delta to show the change or simply use it for color
+                        slam_val = float(str(stats['💥 SLAM Index']).replace('%', '').replace('+', ''))
+                        brl_val = float(str(stats['Brl %']).replace('%', '').replace('+', ''))
+                        hh_val = float(str(stats['HH %']).replace('%', '').replace('+', ''))
+
                         with c1:
-                            st.container(border=True).write(f"**SLAM**\n\n{stats['💥 SLAM Index']}")
+                            st.metric("SLAM", stats['💥 SLAM Index'], delta="Elite" if slam_val >= 65.0 else "Low")
                         with c2:
-                            st.container(border=True).write(f"**Barrel**\n\n{stats['Brl %']}%")
+                            st.metric("Barrel", f"{stats['Brl %']}%", delta="Good" if brl_val >= 10.0 else "Low")
                         with c3:
-                            st.container(border=True).write(f"**HardHit**\n\n{stats['HH %']}%")
+                            st.metric("HardHit", f"{stats['HH %']}%", delta="Strong" if hh_val >= 40.0 else "Low")
                         with c4:
-                            st.container(border=True).write(f"**Total BBE**\n\n{stats['BBE']}")
+                            st.metric("BBE", stats['BBE'])
                             
                         # --- Arsenal Compatibility Matrix (Aligned) ---
                         st.markdown("#### 🎯 Arsenal Compatibility Matrix")
