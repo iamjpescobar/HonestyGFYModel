@@ -31,7 +31,6 @@ PITCH_CODE_MAP = {
     'SI': 'Sinker', 'CU': 'Curveball', 'FC': 'Cutter', 
     'ST': 'Sweeper', 'FS': 'Splitter', 'KC': 'Knuckle-Curve'
 }
-
 if 'selected_batter' not in st.session_state:
     st.session_state.selected_batter = None
 
