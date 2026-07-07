@@ -60,7 +60,8 @@ games = get_todays_games()
 st.markdown("### 📅 Select Matchup")
 cols = st.columns(len(games) if games else 1)
 for i, g in enumerate(games):
-    if cols[i].button(f"{g['away']} @ {g['home']}"):
+    # The 'key' ensures Streamlit treats every button as a distinct, unique item
+    if cols[i].button(f"{g['away']} @ {g['home']}", key=f"btn_{g['game_id']}"):
         st.session_state.selected_game = g
 
 if st.session_state.selected_game:
