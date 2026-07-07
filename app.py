@@ -310,19 +310,27 @@ if games:
                     ld = round(np.random.uniform(15.0, 25.0), 1)
                     pull_air = round(np.random.uniform(10.0, 25.0), 1)
                 
-                match_rating = np.random.choice(["🔥 ELITE", "✅ Good", "Neutral", "⚠️ Cold"], p=[0.15, 0.45, 0.30, 0.10])
+         # --- WIZARD SAUCE INTEGRATION ---
+                iso_val = float(match.get('ISO', [0.150])[0]) if not match.empty else 0.150
+                bat_speed = float(match.get('BatSpeed', [70.0])[0]) if not match.empty else 70.0
+                deep_flight = int(match.get('350ft_plus_count', [0])[0]) if not match.empty else 0
                 
-                base_score = (brl * 3.5) + (hh * 0.5) + (pull_air * 0.3) - (gb * 0.2)
+                # Penalty for excessive Line Drives (rewarding Fly Balls)
+                ld_penalty = 1.2 if ld > 22.0 else 1.0
+                
+                # S.L.A.M. Index Formula
+                base_score = ((brl * 3.5) + (hh * 0.8) + (pull_air * 0.5) - (gb * 0.2)) / ld_penalty
+                
+                # Additive Bonuses
+                if bat_speed >= 72.0: base_score += 5.0
+                if deep_flight > 5: base_score += (deep_flight * 1.5)
+                if iso_val > 0.200: base_score += 7.0
+                
+                match_rating = np.random.choice(["🔥 ELITE", "✅ Good", "Neutral", "⚠️ Cold"], p=[0.15, 0.45, 0.30, 0.10])
                 if match_rating == "✅ Good": base_score *= 1.15
                 if bbe > 120: base_score += 8
                 
                 slam_index = min(100.0, max(5.0, base_score))
-                
-                processed_rows.append({
-                    "Batter Name": b['name'], "Hand": b['hand'], "BBE": bbe, "💥 SLAM Index": round(slam_index, 1),
-                    "Top 3 Matchup": match_rating, "Brl %": brl, "PullAir %": pull_air, "HH %": hh, 
-                    "LD %": ld, "GB %": gb
-                })
                 
             if processed_rows:
                 df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
