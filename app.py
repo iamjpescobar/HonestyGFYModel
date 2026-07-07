@@ -114,8 +114,6 @@ def get_static_games():
     ]
 
 @st.cache_data(ttl=3600)
-# --- 1. CORRECTED ROSTER FUNCTION ---
-@st.cache_data(ttl=3600)
 def get_live_team_roster(team_name):
     team_id = MLB_TEAM_IDS.get(team_name)
     if not team_id: return []
