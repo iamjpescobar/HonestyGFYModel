@@ -48,7 +48,7 @@ for i, game in enumerate(slate):
         def color_danger(val):
             return 'background-color: #5a1e1e' if val > 10 else 'background-color: #1e3a1e'
         
-        st.dataframe(df_pitcher.style.applymap(color_danger, subset=['Value']), use_container_width=True)
+        st.dataframe(df_pitcher.style.map(color_danger, subset=['Value']), use_container_width=True)
 
 # --- 4. GLOBAL DASHBOARD (Bottom) ---
 st.divider()
