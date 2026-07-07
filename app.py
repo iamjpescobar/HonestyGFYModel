@@ -88,24 +88,7 @@ def get_live_team_roster(team_name):
         return players
     except:
         return []
-    url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster?rosterType=active"
-    try:
-        response = requests.get(url).json()
-        roster = response.get('roster', [])
-        players = []
-        for p in roster:
-            person = p.get('person', {})
-            pos = p.get('position', {})
-            if pos.get('code') != '1' and person.get('fullName'):
-                players.append({
-                    "name": person['fullName'],
-                    "hand": "LHB" if person.get('batSide', {}).get('code') == 'L' else "RHB"
-                })
-        return players
-    except Exception:
-        if "Royals" in team_name:
-            return [{"name": "Jac Caglianone", "hand": "LHB"}, {"name": "Luke Maile", "hand": "RHB"}, {"name": "Nick Loftin", "hand": "RHB"}, {"name": "Salvador Perez", "hand": "RHB"}]
-        return [{"name": "Andrés Chaparro", "hand": "RHB"}, {"name": "CJ Abrams", "hand": "LHB"}, {"name": "Curtis Mead", "hand": "RHB"}]
+    
 
 @st.cache_data(ttl=7200)
 def load_real_batter_stats():
