@@ -291,11 +291,12 @@ if games:
             st.markdown(f"### ⚔️ Intent-To-Homer Lineup Analysis vs. {opposing_team}")
             st.caption("🌲 Emerald Glow = High Volume Verified Power + Covers Arsenal Options | 🪐 Matte Grey = Small Sample Size")
             
-            live_batters = get_live_team_roster(opposing_team)
-            real_stats_df = load_real_batter_stats()
-            processed_rows = []
-            
-            # --- QUALIFIED SLAM ENGINE ---
+            # --- DATA INITIALIZATION ---
+live_batters = get_live_team_roster(opposing_team)
+real_stats_df = load_real_batter_stats()
+processed_rows = []
+
+# --- QUALIFIED SLAM ENGINE ---
 MIN_BBE = 10
 MIN_BRL = 10.0
 MIN_HH = 40.0
@@ -305,41 +306,42 @@ MIN_PULL_AIR = 10.0
 MIN_FB_HR = 30.0
 MIN_BLAST = 20.0
 
-for b in live_batters:
-    b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
-    match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean]
-    
-    if not match.empty:
-        brl = float(match.get('Barrel%', [0]).iloc[0])
-        hh = float(match.get('HardHit%', [0]).iloc[0])
-        ld = float(match.get('LD%', [0]).iloc[0])
-        fb = float(match.get('FB%', [0]).iloc[0])
-        pull_air = float(match.get('PullAir%', [0]).iloc[0])
-        fb_hr = float(match.get('FB/HR%', [0]).iloc[0])
-        blast = float(match.get('Blast%', [0]).iloc[0])
-        bbe = int(match.get('BBE', [0]).iloc[0])
+if live_batters:
+    for b in live_batters:
+        b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
+        match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean]
         
-        is_qualified = (bbe >= MIN_BBE and brl >= MIN_BRL and hh >= MIN_HH and 
-                       ld <= MAX_LD and fb >= MIN_FB and pull_air >= MIN_PULL_AIR and 
-                       fb_hr >= MIN_FB_HR and blast >= MIN_BLAST)
-        
-        if is_qualified:
-            slam_index = (brl * 2) + (hh * 1.5) + (blast * 1.5)
-            status = "🔥 QUALIFIED"
-        else:
-            slam_index = 0.0
-            status = "⚠️ NOT QUALIFIED"
+        if not match.empty:
+            brl = float(match.get('Barrel%', [0]).iloc[0])
+            hh = float(match.get('HardHit%', [0]).iloc[0])
+            ld = float(match.get('LD%', [0]).iloc[0])
+            fb = float(match.get('FB%', [0]).iloc[0])
+            pull_air = float(match.get('PullAir%', [0]).iloc[0])
+            fb_hr = float(match.get('FB/HR%', [0]).iloc[0])
+            blast = float(match.get('Blast%', [0]).iloc[0])
+            bbe = int(match.get('BBE', [0]).iloc[0])
             
-        processed_rows.append({
-            "Batter Name": b['name'],
-            "Hand": b['hand'],
-            "💥 SLAM Index": round(slam_index, 1),
-            "Status": status,
-            "Brl %": brl,
-            "HH %": hh,
-            "Blast %": blast,
-            "BBE": bbe
-        })
+            is_qualified = (bbe >= MIN_BBE and brl >= MIN_BRL and hh >= MIN_HH and 
+                           ld <= MAX_LD and fb >= MIN_FB and pull_air >= MIN_PULL_AIR and 
+                           fb_hr >= MIN_FB_HR and blast >= MIN_BLAST)
+            
+            if is_qualified:
+                slam_index = (brl * 2) + (hh * 1.5) + (blast * 1.5)
+                status = "🔥 QUALIFIED"
+            else:
+                slam_index = 0.0
+                status = "⚠️ NOT QUALIFIED"
+                
+            processed_rows.append({
+                "Batter Name": b['name'],
+                "Hand": b['hand'],
+                "💥 SLAM Index": round(slam_index, 1),
+                "Status": status,
+                "Brl %": brl,
+                "HH %": hh,
+                "Blast %": blast,
+                "BBE": bbe
+            })
 
 # --- UI DISPLAY SECTION ---
 if processed_rows:
