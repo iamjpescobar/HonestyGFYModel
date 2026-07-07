@@ -79,10 +79,16 @@ def get_live_team_roster(team_name):
         players = []
         for p in response.get('roster', []):
             person = p.get('person', {})
-            # Debugging the API response
-    side_code = person.get('batSide', {}).get('code', 'R')
-    # If this prints 'R' for a known Switch Hitter, the API thinks they are RHB.
-    print(f"DEBUG: {person.get('fullName')} | Code: {side_code}") 
+           for p in response.get('roster', []):
+        person = p.get('person', {})
+        # Everything here must be indented with the same 4-space gap
+        side_code = person.get('batSide', {}).get('code', 'R')
+        print(f"DEBUG: {person.get('fullName')} | Code: {side_code}")
+        
+        side_label = "LHB" if side_code == 'L' else ("SHB" if side_code == 'S' else "RHB")
+        
+        if p.get('position', {}).get('code') != '1':
+            players.append({"name": person['fullName'], "hand": side_label})
     
     side_label = "LHB" if side_code == 'L' else ("SHB" if side_code == 'S' else "RHB")
             
