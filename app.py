@@ -121,14 +121,23 @@ def get_live_team_roster(team_name):
     try:
         response = requests.get(url).json()
         players = []
+        # Replace the loop starting at line 123 with this:
         for p in response.get('roster', []):
             person = p.get('person', {})
-            # This line fixes the Handedness issue
+            # Fetch the code safely
             side_code = person.get('batSide', {}).get('code', 'R')
-            side_label = "LHB" if side_code == 'L' else ("SHB" if side_code == 'S' else "RHB")
             
+            # Explicitly map the values
+            if side_code == 'L':
+                hand_label = "LHB"
+            elif side_code == 'S':
+                hand_label = "SHB"
+            else:
+                hand_label = "RHB"
+            
+            # Filter for position players (exclude pitchers)
             if p.get('position', {}).get('code') != '1':
-                players.append({"name": person['fullName'], "hand": side_label})
+                players.append({"name": person.get('fullName'), "hand": hand_label})
         return players
     except:
         return []
