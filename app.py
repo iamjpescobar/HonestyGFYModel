@@ -293,41 +293,61 @@ if games:
             processed_rows = []
             
             for b in live_batters:
-                b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
-                
-                match = pd.DataFrame()
-                if not real_stats_df.empty:
-                    match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean]
-                
-                if not match.empty:
-                    bbe = int(match['AB'].iloc[0])
-                    brl = round(float(match.get('Barrel%', [8.5])[0]), 1) if 'Barrel%' in match.columns else 8.5
-                    hh = round(float(match.get('HardHit%', [40.0])[0]), 1) if 'HardHit%' in match.columns else 40.0
-                    gb = round(float(match.get('GB%', [42.0])[0]), 1) if 'GB%' in match.columns else 42.0
-                    ld = round(float(match.get('LD%', [20.0])[0]), 1) if 'LD%' in match.columns else 20.0
-                    pull_air = round(float(match.get('FB%', [35.0])[0]), 1) if 'FB%' in match.columns else 35.0
-                else:
-                    np.random.seed(abs(hash(b['name'])) % (10**8))
-                    bbe = int(np.random.uniform(30, 240))
-                    brl = round(np.random.uniform(4.0, 14.0), 1)
-                    hh = round(np.random.uniform(25.0, 50.0), 1)
-                    gb = round(np.random.uniform(35.0, 48.0), 1)
-                    ld = round(np.random.uniform(15.0, 25.0), 1)
-                    pull_air = round(np.random.uniform(10.0, 25.0), 1)
-                    swsp = round(np.random.uniform(32.0, 44.0), 1)
-                
-                match_rating = np.random.choice(["🔥 ELITE", "✅ Good", "Neutral", "⚠️ Cold"], p=[0.15, 0.45, 0.30, 0.10])
-                
-                base_score = (brl * 3.5) + (hh * 0.5) + (pull_air * 0.3) - (gb * 0.2)
-                if match_rating == "✅ Good": base_score *= 1.15
-                if bbe > 120: base_score += 8
-                
-                slam_index = min(100.0, max(5.0, base_score))
-                
-                processed_rows.append({
-                    "Batter Name": b['name'], "Hand": b['hand'], "BBE": bbe, "💥 SLAM Index": round(slam_index, 1),
-                    "Top 3 Matchup": match_rating, "Brl %": brl, "PullAir %": pull_air, "HH %": hh, 
-                    "LD %": ld, "GB %": gb
+            # --- QUALIFIED SLAM ENGINE ---
+# Threshold Requirements
+MIN_BBE = 10
+MIN_BRL = 10.0
+MIN_HH = 40.0
+MAX_LD = 20.0
+MIN_FB = 30.0
+MIN_PULL_AIR = 10.0
+MIN_FB_HR = 30.0
+MIN_BLAST = 20.0
+
+for b in live_batters:
+    b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
+    match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean]
+    
+    if not match.empty:
+        # Extract verified stats (using .get with default 0 if column missing)
+        brl = float(match.get('Barrel%', [0]).iloc[0])
+        hh = float(match.get('HardHit%', [0]).iloc[0])
+        ld = float(match.get('LD%', [0]).iloc[0])
+        fb = float(match.get('FB%', [0]).iloc[0])
+        pull_air = float(match.get('PullAir%', [0]).iloc[0])
+        fb_hr = float(match.get('FB/HR%', [0]).iloc[0])
+        blast = float(match.get('Blast%', [0]).iloc[0])
+        bbe = int(match.get('BBE', [0]).iloc[0])
+        
+        # Qualification Logic: ALL must be true for the status to be "🔥 QUALIFIED"
+        is_qualified = (
+            bbe >= MIN_BBE and
+            brl >= MIN_BRL and 
+            hh >= MIN_HH and 
+            ld <= MAX_LD and 
+            fb >= MIN_FB and 
+            pull_air >= MIN_PULL_AIR and 
+            fb_hr >= MIN_FB_HR and 
+            blast >= MIN_BLAST
+        )
+        
+        if is_qualified:
+            # Verified calculation (No randomness)
+            slam_index = (brl * 2) + (hh * 1.5) + (blast * 1.5)
+            status = "🔥 QUALIFIED"
+        else:
+            slam_index = 0.0
+            status = "⚠️ NOT QUALIFIED"
+            
+        processed_rows.append({
+            "Batter Name": b['name'],
+            "Hand": b['hand'],
+            "💥 SLAM Index": round(slam_index, 1),
+            "Status": status,
+            "Brl %": brl,
+            "HH %": hh,
+            "Blast %": blast
+        })
                 })
                 
             if processed_rows:
