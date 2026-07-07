@@ -247,7 +247,25 @@ if games:
             processed_rows = []
             
             for b in live_batters:
-                b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
+                # --- THE WIZARD ENGINE LOGIC ---
+# 1. Pull the Last 25 PA (We use statcast_batter for this)
+# 2. Focus on: ISO (Power), Barrel%, and the specific 'Launch Angle' window (25-35 deg)
+# 3. Apply the 'Air-Power Multiplier'
+
+# Replace your current base_score block with this:
+# We filter for Air Contact (25-35 degrees)
+air_contact_bonus = 1.2 if (pull_air > 25 and pull_air < 35) else 1.0
+
+# Calculate ISO (assuming you have access to SLG and AVG, otherwise use BBE-adjusted power)
+# Weighted Formula: (ISO * 40) + (Barrel% * 3) + (HH% * 0.5)
+base_score = (iso * 40) + (brl * 3.0) + (hh * 0.5) 
+
+# Distance Multiplier: The "350ft+" factor
+# If they have high frequency of 350ft+ shots in last 25, apply a significant boost
+base_score *= air_contact_bonus
+
+# Finalizing the index
+slam_index = min(100.0, max(0.0, base_score))
                 
                 match = pd.DataFrame()
                 if not real_stats_df.empty:
