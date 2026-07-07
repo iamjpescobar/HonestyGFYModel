@@ -294,13 +294,18 @@ if games:
             # --- DATA INITIALIZATION ---
 live_batters = get_live_team_roster(opposing_team)
 real_stats_df = load_real_batter_stats()
-
-# Fix: Create Name_Clean if it doesn't exist to prevent KeyError
-# Replace 'Name' with the exact header name from your CSV if it differs
-if 'Name_Clean' not in real_stats_df.columns:
-    real_stats_df['Name_Clean'] = real_stats_df['Name'].astype(str).str.lower().str.replace('.', '').str.replace(',', '').str.replace("'", "")
-
 processed_rows = []
+
+# DIAGNOSTIC: This code will print the actual columns to your screen if it fails
+if 'Name_Clean' not in real_stats_df.columns:
+    try:
+        # Check your CSV/Data source. If the name column is 'Player', change 'Name' to 'Player'
+        target_col = 'Name' 
+        real_stats_df['Name_Clean'] = real_stats_df[target_col].astype(str).str.lower().str.replace('.', '').str.replace(',', '').str.replace("'", "")
+    except KeyError:
+        # This will show you exactly what columns are available on your screen
+        st.error(f"Error! Column '{target_col}' not found. Available columns in your data are: {list(real_stats_df.columns)}")
+        st.stop()
 
 # --- QUALIFIED SLAM ENGINE ---
 MIN_BBE = 10
