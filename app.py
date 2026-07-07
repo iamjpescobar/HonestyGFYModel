@@ -158,22 +158,22 @@ def highlight_slam(row):
 # --- 5. APPLICATION INTERFACE AND CONTROL RUNNER ---
 games = get_todays_games()
 
-if games:
-    # Navigation tabs at the top
-    tabs = st.tabs([f"{g['away']} @ {g['home']}" for g in games])
-    
-    for i, game in enumerate(games):
+for i, game in enumerate(games):
         with tabs[i]:
             st.subheader(f"Pro-Report: {game['away_p']} vs {game['home_p']}")
-        )
-        chosen_game = games[selected_idx]
-        
-        st.markdown("---")
-        
-        pitcher = st.radio(
-            "Select Pitcher to Target:", 
-            [chosen_game['away_pitcher'], chosen_game['home_pitcher']]
-        )
+            
+            # Use 'game' directly instead of 'games[selected_idx]'
+            chosen_game = game 
+            
+            st.markdown("---")
+            
+            pitcher = st.radio(
+                "Select Pitcher to Target:", 
+                [chosen_game['away_pitcher'], chosen_game['home_pitcher']],
+                key=f"pitcher_radio_{i}" # Unique key for each tab
+            )
+            
+            # The rest of your logic...
         
     opposing_team = chosen_game['home'] if pitcher == chosen_game['away_pitcher'] else chosen_game['away']
     
