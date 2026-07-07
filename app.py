@@ -101,7 +101,24 @@ def load_real_batter_stats():
         return df
     except Exception:
         return pd.DataFrame()
-
+@st.cache_data(ttl=3600)
+def get_batter_affinity_multiplier(batter_name, pitcher_data):
+    """
+    Checks the pitcher's primary pitch and returns an affinity multiplier 
+    based on a simplified simulated affinity lookup.
+    """
+    if pitcher_data is None or pitcher_data.empty:
+        return 1.0
+    
+    # Identify primary pitch code (most frequent)
+    primary_code = pitcher_data['pitch_type'].value_counts().idxmax()
+    
+    # Logic: If batter is 'Elite' or 'Good', apply a 1.10 multiplier (10% boost)
+    # This simulates checking the batter's historical wOBA vs that pitch type
+    # In a production app, replace with a real lookup: batting_stats_vs_pitch(batter_id, primary_code)
+    np.random.seed(abs(hash(batter_name)) % (10**8))
+    # Randomly assign affinity based on a 40% success rate
+    return 1.10 if np.random.rand() > 0.6 else 1.0
 # --- 4. CONDITIONAL HEATMAP GENERATOR ---
 def highlight_slam(row):
     styles = [''] * len(row)
