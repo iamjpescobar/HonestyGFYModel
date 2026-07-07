@@ -41,7 +41,6 @@ def get_todays_games():
     today = datetime.today().strftime('%Y-%m-%d')
     url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}&hydrate=probablePitcher"
     try:
-        try:
         response = requests.get(url).json()
         games_list = response.get('dates', [{}])[0].get('games', [])
         matchups = []
@@ -57,7 +56,6 @@ def get_todays_games():
             if away_team == "Houston Astros" and away_p == "TBD": away_p = "Mike Burrows"
             if home_team == "Washington Nationals" and home_p == "TBD": home_p = "Miles Mikolas"
             
-            # Correctly append the dictionary with game_num
             matchups.append({
                 "game_id": g['gamePk'], 
                 "away": away_team, 
@@ -66,6 +64,9 @@ def get_todays_games():
                 "away_pitcher": away_p, 
                 "home_pitcher": home_p
             })
+        return matchups if matchups else get_static_games()
+    except Exception:
+        return get_static_games()
         return matchups if matchups else get_static_games()
 
 def get_static_games():
@@ -81,7 +82,6 @@ def get_live_team_roster(team_name):
     url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster?rosterType=active"
     try:
    
-    try:
         response = requests.get(url).json()
         roster = response.get('roster', [])
         players = []
