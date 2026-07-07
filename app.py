@@ -120,20 +120,23 @@ def get_live_team_roster(team_name):
     url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster?rosterType=active"
     try:
         response = requests.get(url).json()
-        # --- Update the loop in get_live_team_roster ---
-for p in response.get('roster', []):
-    person = p.get('person', {})
-    side_code = person.get('batSide', {}).get('code', 'R')
-    
-    # --- Diagnostic print to verify API output ---
-    print(f"Debug: Player {person.get('fullName')} has batSide code: {side_code}")
-    
-    # Explicit mapping
-    if side_code == 'L':
-        hand_label = "LHB"
-    elif side_code == 'S':
-        hand_label = "SHB"
-    else:
+        players = []
+        for p in response.get('roster', []):
+            person = p.get('person', {})
+            side_code = person.get('batSide', {}).get('code', 'R')
+            
+            # Map hand labels
+            if side_code == 'L': hand_label = "LHB"
+            elif side_code == 'S': hand_label = "SHB"
+            else: hand_label = "RHB"
+            
+            if p.get('position', {}).get('code') != '1':
+                players.append({"name": person.get('fullName'), "hand": hand_label})
+        return players
+
+    except Exception as e:
+        st.error(f"Error fetching roster: {e}")
+        return []
         hand_label = "RHB"
     
     # Filter for position players (exclude pitchers)
@@ -387,7 +390,7 @@ if games:
                     "Batter Name": b['name'], "Hand": b['hand'], "BBE": bbe, "💥 SLAM Index": round(slam_index, 1),
                     "Top 3 Matchup": match_rating, "Brl %": brl, "PullAir %": pull_air, "HH %": hh, 
                     "LD %": ld, "GB %": gb
-                })
+                }).map(highlight_slam, axis=None) 
                 
             if processed_rows:
                 df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
