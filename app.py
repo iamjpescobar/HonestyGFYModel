@@ -315,7 +315,7 @@ if games:
                 bat_speed = float(match.get('BatSpeed', [70.0])[0]) if not match.empty else 70.0
                 deep_flight = int(match.get('350ft_plus_count', [0])[0]) if not match.empty else 0
                 
-                # Penalty for excessive Line Drives (rewarding Fly Balls)
+                # Penalty for excessive Line Drives
                 ld_penalty = 1.2 if ld > 22.0 else 1.0
                 
                 # S.L.A.M. Index Formula
@@ -332,39 +332,14 @@ if games:
                 
                 slam_index = min(100.0, max(5.0, base_score))
                 
-            if processed_rows:
-                df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
-                
-                selected_scout = st.selectbox(
-                    "🔍 Click to inspect detailed historical performance breakdown:",
-                    ["-- Active Lineup Roster Overview --"] + list(df_lineup.index)
-                )
-                
-                if selected_scout != "-- Active Lineup Roster Overview --":
-                    st.session_state.selected_batter = selected_scout
-                else:
-                    st.session_state.selected_batter = None
-                    
-                if st.session_state.selected_batter:
-                    sb = st.session_state.selected_batter
-                    if sb in df_lineup.index:
-                        stats = df_lineup.loc[sb]
-                        st.markdown(f"#### 📊 Detailed Scout Matrix: {sb}")
-                        c1, c2, c3, c4 = st.columns(4)
-                        c1.metric("Calculated SLAM Rating", f"{stats['💥 SLAM Index']}")
-                        c2.metric("Barrel Execution Rate", f"{stats['Brl %']}%")
-                        c3.metric("Hard Hit Metric", f"{stats['HH %']}%")
-                        c4.metric("Total BBE Sample Size", f"{stats['BBE']}")
-                        st.markdown("---")
-                
-                styled_df = df_lineup.style.format({
-                    "BBE": "{:d}", "💥 SLAM Index": "{:.1f}", "Brl %": "{:.1f}%", 
-                    "PullAir %": "{:.1f}%", "HH %": "{:.1f}%", "LD %": "{:.1f}%", "GB %": "{:.1f}%"
-                }).apply(highlight_slam, axis=1)
-                
-                st.dataframe(styled_df, use_container_width=True)
-                
-        except Exception as e:
-            st.error(f"Error processing layout configurations: {e}")
-else:
-    st.info("Awaiting live MLB schedule initialization data streams.")
+                # --- CRITICAL: ADD THIS PART ---
+                processed_rows.append({
+                    "Batter Name": b['name'],
+                    "💥 SLAM Index": slam_index,
+                    "Brl %": brl,
+                    "HH %": hh,
+                    "PullAir %": pull_air,
+                    "LD %": ld,
+                    "GB %": gb,
+                    "BBE": bbe
+                })
