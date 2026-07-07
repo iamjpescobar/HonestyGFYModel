@@ -370,18 +370,12 @@ if games:
                 st.container(border=True).metric("Total BBE", f"{stats['BBE']}")
 
             # --- Arsenal Compatibility Matrix ---
+            # --- Arsenal Compatibility Matrix ---
             st.markdown("#### 🎯 Arsenal Compatibility Matrix")
             pitcher_arsenal = ['4-Seam Fastball', 'Slider', 'Changeup', 'Sinker']
             comp_data = get_pitch_success_rate(sb, pitcher_arsenal)
             comp_df = pd.DataFrame.from_dict(comp_data, orient='index', columns=['Success Multiplier'])
             st.bar_chart(comp_df)
-                            
-                        # --- Arsenal Compatibility Matrix (Aligned) ---
-                        st.markdown("#### 🎯 Arsenal Compatibility Matrix")
-                        pitcher_arsenal = ['4-Seam Fastball', 'Slider', 'Changeup', 'Sinker']
-                        comp_data = get_pitch_success_rate(sb, pitcher_arsenal)
-                        comp_df = pd.DataFrame.from_dict(comp_data, orient='index', columns=['Success Multiplier'])
-                        st.bar_chart(comp_df)
                 styled_df = df_lineup.style.format({
                     "BBE": "{:d}", "💥 SLAM Index": "{:.1f}", "Brl %": "{:.1f}%", 
                     "PullAir %": "{:.1f}%", "HH %": "{:.1f}%", "LD %": "{:.1f}%", "GB %": "{:.1f}%"
