@@ -151,8 +151,10 @@ if games:
     # --- MODERN TOP-ALIGNED MATCHUP TICKER ---
     st.markdown("### 📅 Today's Matchup Slate")
     # Create horizontal tabs for each game
-    tab_labels = [f"{g['away'][:3]} @ {g['home'][:3]}" for g in games]
-    tabs = st.tabs(tab_labels)
+    # Shorten the label to just the team abbreviation (e.g., MIL @ STL)
+# This forces the tabs to stay narrow and horizontal
+tab_labels = [f"{g['away'][:3]} @ {g['home'][:3]}" for g in games]
+tabs = st.tabs(tab_labels)
 
 # When a tab is clicked, update the session state
 for i, tab in enumerate(tabs):
