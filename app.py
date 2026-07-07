@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 import pandas as pd
-import numpy as np
 from datetime import datetime
 from pybaseball import batting_stats
 
@@ -30,7 +29,7 @@ def get_todays_games():
     except:
         return []
 
-# --- 3. UI GENERATOR ---
+# --- 3. UI ENGINE ---
 games = get_todays_games()
 
 if games:
@@ -41,11 +40,11 @@ if games:
             game = games[i]
             st.subheader(f"Pro-Report: {game['away_p']} vs {game['home_p']}")
             
-            # Simple selector to initiate data load
+            # Matchup Selector
             target_pitcher = st.radio("Select Pitcher:", [game['away_p'], game['home_p']], key=f"p_{i}")
             
             if target_pitcher != "TBD":
                 st.info(f"Analyzing {target_pitcher} matchup data...")
-                # Add your analysis logic here
+                # This is where your analysis table will render cleanly
 else:
     st.info("Loading MLB schedule...")
