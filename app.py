@@ -116,23 +116,37 @@ def load_real_batter_stats():
     except Exception:
         return pd.DataFrame()
 @st.cache_data(ttl=3600)
-def get_batter_affinity_multiplier(batter_name, pitcher_data):
+def get_batter_affinity_multiplier(batter_name, pitcher_data, real_stats_df):
     """
-    Checks the pitcher's primary pitch and returns an affinity multiplier 
-    based on a simplified simulated affinity lookup.
+    Calculates a real affinity multiplier based on batter hard-hit rate.
+    No randomness. Pure data.
     """
-    if pitcher_data is None or pitcher_data.empty:
+    if pitcher_data is None or pitcher_data.empty or real_stats_df.empty:
         return 1.0
     
-    # Identify primary pitch code (most frequent)
+    # 1. Identify Pitcher's primary weapon
     primary_code = pitcher_data['pitch_type'].value_counts().idxmax()
     
-    # Logic: If batter is 'Elite' or 'Good', apply a 1.10 multiplier (10% boost)
-    # This simulates checking the batter's historical wOBA vs that pitch type
-    # In a production app, replace with a real lookup: batting_stats_vs_pitch(batter_id, primary_code)
-    np.random.seed(abs(hash(batter_name)) % (10**8))
-    # Randomly assign affinity based on a 40% success rate
-    return 1.10 if np.random.rand() > 0.6 else 1.0
+    # 2. Find the Batter in your real_stats_df
+    batter_name_clean = batter_name.lower().replace('.', '').replace(',', '').replace("'", "")
+    batter_match = real_stats_df[real_stats_df['Name_Clean'] == batter_name_clean]
+    
+    if batter_match.empty:
+        return 1.0 # No data available, return neutral multiplier
+    
+    # 3. Calculate "Affinity" based on actual HardHit %
+    # If the batter hits the ball hard (e.g., > 40%), we give them a boost.
+    # We use the actual HardHit% column from your real stats data.
+    hard_hit_rate = float(batter_match['HardHit%'].iloc[0]) / 100
+    
+    # Logic: If they are above a 35% hard hit rate, they earn a multiplier.
+    # This is a fixed, replicable calculation. No randomness.
+    if hard_hit_rate > 0.35:
+        return 1.10
+    elif hard_hit_rate > 0.40:
+        return 1.15
+    else:
+        return 1.0
 # --- 4. CONDITIONAL HEATMAP GENERATOR ---
 def highlight_slam(row):
     styles = [''] * len(row)
