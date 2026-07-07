@@ -178,7 +178,7 @@ def get_batter_affinity_multiplier(batter_name, pitcher_data):
     # Randomly assign affinity based on a 40% success rate
     return 1.10 if np.random.rand() > 0.6 else 1.0
 # --- 4. CONDITIONAL HEATMAP GENERATOR ---
-def highlight_slam(row, axis=None):
+def highlight_slam(row):
     styles = [''] * len(row)
     try:
         slam_val = float(row['💥 SLAM Index'])
@@ -387,7 +387,7 @@ if games:
                 styled_df = df_lineup.style.format({
                     "BBE": "{:d}", "💥 SLAM Index": "{:.1f}", "Brl %": "{:.1f}%", 
                     "PullAir %": "{:.1f}%", "HH %": "{:.1f}%", "LD %": "{:.1f}%", "GB %": "{:.1f}%"
-                }).map(highlight_slam, axis=1)
+                }).apply(highlight_slam, axis=1)
                 
                 st.dataframe(styled_df, use_container_width=True)
                 
