@@ -150,11 +150,7 @@ def highlight_slam(row):
 def format_game(g):
     # Extract time from "2026-07-07T23:10:00Z"
     time_part = g.get('start_time', 'TBD').split('T')
-    if len(time_part) > 1:
-        hm = time_part[1].split(':')
-        readable_time = f"{hm[0]}:{hm[1]}"
-    else:
-        readable_time = "TBD"
+    readable_time = time_part[1][:5] if len(time_part) > 1 else "TBD"
     return f"{g['away']} @ {g['home']} ({readable_time} UTC)"
 
 # --- 5. APPLICATION INTERFACE AND CONTROL RUNNER ---
@@ -169,6 +165,7 @@ if games:
     )
 
     if chosen_game:
+        # Pitcher selection - standard radio
         pitcher = st.radio(
             "Select Pitcher to Target:",
             [chosen_game['away_pitcher'], chosen_game['home_pitcher']],
@@ -179,6 +176,7 @@ if games:
 
         if pitcher and pitcher != "TBD":
             st.write(f"## 📋 Pro-Report: {pitcher}")
+            # ... [INSERT THE REST OF YOUR DATA PROCESSING LOGIC HERE] ...
             
             try:
                 # ... [REST OF YOUR EXISTING DATA PROCESSING LOGIC HERE] ...
