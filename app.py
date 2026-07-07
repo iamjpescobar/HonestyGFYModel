@@ -270,84 +270,41 @@ if games:
                 ]))
             
             # --- REAL BATTER STATCAST INTEGRATION ---
-            st.markdown(f"### ⚔️ Intent-To-Homer Lineup Analysis vs. {opposing_team}")
-            st.caption("🌲 Emerald Glow = High Volume Verified Power + Covers Arsenal Options | 🪐 Matte Grey = Small Sample Size")
-            
-            live_batters = get_live_team_roster(opposing_team)
-            real_stats_df = load_real_batter_stats()
-            processed_rows = []
-            
-            for b in live_batters:
-                b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
-                
-                match = pd.DataFrame()
-                if not real_stats_df.empty:
-                    match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean]
-                
-                if not match.empty:
-                    bbe = int(match['AB'].iloc[0])
-                    brl = round(float(match.get('Barrel%', [8.5])[0]), 1) if 'Barrel%' in match.columns else 8.5
-                    hh = round(float(match.get('HardHit%', [40.0])[0]), 1) if 'HardHit%' in match.columns else 40.0
-                    gb = round(float(match.get('GB%', [42.0])[0]), 1) if 'GB%' in match.columns else 42.0
-                    ld = round(float(match.get('LD%', [20.0])[0]), 1) if 'LD%' in match.columns else 20.0
-                    pull_air = round(float(match.get('FB%', [35.0])[0]), 1) if 'FB%' in match.columns else 35.0
-                else:
-                    np.random.seed(abs(hash(b['name'])) % (10**8))
-                    bbe = int(np.random.uniform(30, 240))
-                    brl = round(np.random.uniform(4.0, 14.0), 1)
-                    hh = round(np.random.uniform(25.0, 50.0), 1)
-                    gb = round(np.random.uniform(35.0, 48.0), 1)
-                    ld = round(np.random.uniform(15.0, 25.0), 1)
-                    pull_air = round(np.random.uniform(10.0, 25.0), 1)
-                    swsp = round(np.random.uniform(32.0, 44.0), 1)
-                
-                match_rating = np.random.choice(["🔥 ELITE", "✅ Good", "Neutral", "⚠️ Cold"], p=[0.15, 0.45, 0.30, 0.10])
-                
-                base_score = (brl * 3.5) + (hh * 0.5) + (pull_air * 0.3) - (gb * 0.2)
-                if match_rating == "✅ Good": base_score *= 1.15
-                if bbe > 120: base_score += 8
-                
-                slam_index = min(100.0, max(5.0, base_score))
-                
-                processed_rows.append({
-                    "Batter Name": b['name'], "Hand": b['hand'], "BBE": bbe, "💥 SLAM Index": round(slam_index, 1),
-                    "Top 3 Matchup": match_rating, "Brl %": brl, "PullAir %": pull_air, "HH %": hh, 
-                    "LD %": ld, "GB %": gb
-                })
-                
-            if processed_rows:
-                df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
-                
-                selected_scout = st.selectbox(
-                    "🔍 Click to inspect detailed historical performance breakdown:",
-                    ["-- Active Lineup Roster Overview --"] + list(df_lineup.index)
-                )
-                
-                if selected_scout != "-- Active Lineup Roster Overview --":
-                    st.session_state.selected_batter = selected_scout
-                else:
-                    st.session_state.selected_batter = None
-                    
-                if st.session_state.selected_batter:
-                    sb = st.session_state.selected_batter
-                    if sb in df_lineup.index:
-                        stats = df_lineup.loc[sb]
-                        st.markdown(f"#### 📊 Detailed Scout Matrix: {sb}")
-                        c1, c2, c3, c4 = st.columns(4)
-                        c1.metric("Calculated SLAM Rating", f"{stats['💥 SLAM Index']}")
-                        c2.metric("Barrel Execution Rate", f"{stats['Brl %']}%")
-                        c3.metric("Hard Hit Metric", f"{stats['HH %']}%")
-                        c4.metric("Total BBE Sample Size", f"{stats['BBE']}")
-                        st.markdown("---")
-                
-                styled_df = df_lineup.style.format({
-                    "BBE": "{:d}", "💥 SLAM Index": "{:.1f}", "Brl %": "{:.1f}%", 
-                    "PullAir %": "{:.1f}%", "HH %": "{:.1f}%", "LD %": "{:.1f}%", "GB %": "{:.1f}%"
-                }).apply(highlight_slam, axis=1)
-                
-                st.dataframe(styled_df, use_container_width=True)
-                
-        except Exception as e:
-            st.error(f"Error processing layout configurations: {e}")
+st.markdown(f"### ⚔️ Intent-To-Homer Lineup Analysis vs. {opposing_team}")
+st.caption("🌲 Emerald Glow = High Volume Verified Power + Covers Arsenal Options")
+
+live_batters = get_live_team_roster(opposing_team)
+real_stats_df = load_real_batter_stats()
+
+# Safety Check: Ensure 'Name_Clean' exists if the dataframe is not empty
+if not real_stats_df.empty and 'Name_Clean' not in real_stats_df.columns:
+    real_stats_df['Name_Clean'] = real_stats_df['Name'].str.lower().str.replace('[.,\']', '', regex=True)
+
+processed_rows = []
+
+for b in live_batters:
+    b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
+    
+    # Safely filter for the batter
+    match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean] if not real_stats_df.empty else pd.DataFrame()
+    
+    if not match.empty:
+        # Use .get() with defaults to prevent KeyErrors if columns are missing
+        bbe = int(match['AB'].iloc[0]) if 'AB' in match.columns else 10
+        brl = float(match.get('Barrel%', [8.5]).iloc[0])
+        hh = float(match.get('HardHit%', [40.0]).iloc[0])
+        gb = float(match.get('GB%', [42.0]).iloc[0])
+        
+        slam_index = (brl * 3.5) + (hh * 0.5)
+        
+        processed_rows.append({
+            "Batter Name": b['name'], "Hand": b['hand'], "BBE": bbe, 
+            "💥 SLAM Index": round(slam_index, 1), "Brl %": brl, "HH %": hh, "GB %": gb
+        })
+
+# --- UI DISPLAY ---
+if processed_rows:
+    df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
+    st.dataframe(df_lineup.style.apply(highlight_slam, axis=1), use_container_width=True)
 else:
-    st.info("Awaiting live MLB schedule initialization data streams.")
+    st.info("No batter data available for this matchup.")
