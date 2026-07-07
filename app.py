@@ -171,11 +171,11 @@ for i, tab in enumerate(tabs):
     st.markdown(f"### Researching: {chosen_game['away']} @ {chosen_game['home']}")
     st.markdown("---")
         
-    # Use a hardcoded, unique prefix to ensure no collision occurs
+    # Use a unique key that is guaranteed to be different per game
     pitcher = st.radio(
         "Select Pitcher to Target:",
         [chosen_game['away_pitcher'], chosen_game['home_pitcher']],
-        key=f"radio_pitcher_{chosen_game.get('game_id', 'default')}"
+        key=f"radio_pitcher_{chosen_game.get('game_id')}"
     )
     
     opposing_team = chosen_game['home'] if pitcher == chosen_game['away_pitcher'] else chosen_game['away']
@@ -190,7 +190,8 @@ for i, tab in enumerate(tabs):
             if "Cristopher" in pitcher: first, last = "Cristopher", "Sanchez"
             
             id_df = playerid_lookup(last, first)
-            pitcher_data = pd.DataFrame()
+        except Exception as e:
+            st.error(f"Error processing pitcher data: {e}")
             
             # Master metrics placeholder initialization
             matrix_rows = []
