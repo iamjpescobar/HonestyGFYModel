@@ -148,17 +148,22 @@ def highlight_slam(row):
 games = get_todays_games()
 
 if games:
-    with st.sidebar:
-        st.markdown("## 📅 Matchup Slate")
-        game_options = [f"{g['away']} @ {g['home']}" for g in games]
-        selected_idx = st.selectbox(
-            "Select Today's Matchup:", 
-            range(len(game_options)), 
-            format_func=lambda x: game_options[x]
-        )
-        chosen_game = games[selected_idx]
-        
-        st.markdown("---")
+    # --- MODERN TOP-ALIGNED MATCHUP TICKER ---
+    st.markdown("### 📅 Today's Matchup Slate")
+    game_cols = st.columns(len(games))
+
+    for i, g in enumerate(games):
+        with game_cols[i]:
+            if st.button(f"{g['away']} @ {g['home']}", key=f"btn_{g['game_id']}"):
+                st.session_state.selected_game = g
+
+    # Initialize session state if not already done
+    if 'selected_game' not in st.session_state:
+        st.session_state.selected_game = games[0]
+
+    chosen_game = st.session_state.selected_game
+    st.markdown(f"### Researching: {chosen_game['away']} @ {chosen_game['home']}")
+    st.markdown("---")
         
         pitcher = st.radio(
             "Select Pitcher to Target:", 
