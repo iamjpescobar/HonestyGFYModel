@@ -158,19 +158,22 @@ if games:
     tab_labels = [f"{g['away'][:3]} @ {g['home'][:3]}" for g in games]
     tabs = st.tabs(tab_labels)
 
-    # Logic for tab switching
+    # 160: When a tab is clicked, update the session state
     for i, tab in enumerate(tabs):
         with tab:
             if st.button(f"Load {games[i]['away']} @ {games[i]['home']}", key=f"btn_{i}"):
                 st.session_state.selected_game = games[i]
                 st.rerun()
 
-    # Get the currently selected game
+    # 167: Initialize session state if not already done
+    if 'selected_game' not in st.session_state:
+        st.session_state.selected_game = games[0]
+
     chosen_game = st.session_state.selected_game
     st.markdown(f"### Researching: {chosen_game['away']} @ {chosen_game['home']}")
     st.markdown("---")
-        
-    # The radio button is now stable and outside the tab loop rendering
+
+    # 175: The radio button is outside the tab loop to prevent key collisions
     pitcher = st.radio(
         "Select Pitcher to Target:",
         [chosen_game.get('away_pitcher'), chosen_game.get('home_pitcher')],
@@ -183,26 +186,27 @@ if games:
         st.write(f"## 📋 Pro-Report: {pitcher}")
 
         try:
-            # Clean name logic
+            # 186: Clean name logic
             clean_name = pitcher.encode('ascii', 'ignore').decode('utf-8').replace('.', '').replace('Jr', '')
             names = clean_name.split(" ")
             first, last = names[0], names[-1]
             if "Cristopher" in pitcher: first, last = "Cristopher", "Sanchez"
             
             id_df = playerid_lookup(last, first)
-        except Exception as e:
-            st.error(f"Error processing lookup: {e}")
+            pitcher_data = pd.DataFrame()
             
-            # Master metrics placeholder initialization
+            # 195: Master metrics placeholder initialization
             matrix_rows = []
             splits = ["Season", "vs LHB", "vs RHB"]
-            
-            # Base dictionary matching user schema configuration requirements
+
+            # 199: Base dictionary matching user schema
             base_data = {
                 "Season": {"IP": 117.0, "BF": 474, "ERA": 3.40, "xERA": 3.32, "wOBA": .265, "SLG": .333, "ISO": .100, "WHIP": 1.09, "HR": 8, "HR/9": 0.62, "BB%": "4.9%", "WHIFF%": "32.2%", "K%": "28.5%", "PUTAWAY%": "27.2%", "SWSTR%": "16.5%", "K/9": 10.38, "1STP S%": "66.9%", "MEATBALL%": "6.2%", "BARREL%": "8.3%", "HH%": "43.0%", "FB%": "17.5%", "HR/FB%": "14.5%", "PULLAIR%": "13.1%"},
                 "vs LHB": {"IP": 31.1, "BF": 112, "ERA": 2.14, "xERA": 2.15, "wOBA": .154, "SLG": .191, "ISO": .045, "WHIP": 0.57, "HR": 1, "HR/9": 0.29, "BB%": "1.8%", "WHIFF%": "32.0%", "K%": "36.6%", "PUTAWAY%": "38.7%", "SWSTR%": "18.0%", "K/9": 11.78, "1STP S%": "73.2%", "MEATBALL%": "8.7%", "BARREL%": "4.3%", "HH%": "34.8%", "FB%": "15.9%", "HR/FB%": "9.1%", "PULLAIR%": "7.2%"},
                 "vs RHB": {"IP": 84.2, "BF": 362, "ERA": 3.84, "xERA": 3.76, "wOBA": .299, "SLG": .379, "ISO": .118, "WHIP": 1.29, "HR": 7, "HR/9": 0.74, "BB%": "5.8%", "WHIFF%": "32.2%", "K%": "26.0%", "PUTAWAY%": "24.1%", "SWSTR%": "16.1%", "K/9": 9.99, "1STP S%": "65.0%", "MEATBALL%": "5.5%", "BARREL%": "9.4%", "HH%": "45.3%", "FB%": "18.0%", "HR/FB%": "15.9%", "PULLAIR%": "14.7%"}
             }
+        except Exception as e:
+            st.error(f"Error processing lookup: {e}")
             
             if not id_df.empty:
                 pitcher_id = id_df.iloc[0]['key_mlbam']
