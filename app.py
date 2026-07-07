@@ -350,7 +350,8 @@ if games:
                 else:
                     st.session_state.selected_batter = None
                     
-if st.session_state.selected_batter:
+            # Final clean version of the batter analysis block
+    if st.session_state.selected_batter:
         sb = st.session_state.selected_batter
         if sb in df_lineup.index:
             stats = df_lineup.loc[sb]
@@ -372,9 +373,10 @@ if st.session_state.selected_batter:
             comp_df = pd.DataFrame.from_dict(comp_data, orient='index', columns=['Success Multiplier'])
             st.bar_chart(comp_df)
             
-            # Display the formatted dataframe
+            st.markdown("#### 📋 Detailed Data")
             styled_df = df_lineup.style.format({
                 "BBE": "{:d}", "💥 SLAM Index": "{:.1f}", "Brl %": "{:.1f}%",
                 "PullAir %": "{:.1f}%", "HH %": "{:.1f}%", "LD %": "{:.1f}%", "GB %": "{:.1f}%"
             }).apply(highlight_slam, axis=1)
             st.dataframe(styled_df, use_container_width=True)
+            
