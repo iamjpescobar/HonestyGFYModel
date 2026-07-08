@@ -1,3 +1,4 @@
+print(">>> USING SCRAPER VERSION <<<")
 import requests
 from bs4 import BeautifulSoup
 
