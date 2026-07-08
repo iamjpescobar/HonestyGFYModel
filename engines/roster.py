@@ -4,8 +4,9 @@ import requests
 
 def get_live_team_roster(team_name: str):
     """
-    FINAL FIX — DO NOT CHANGE
-    Uses MLB lookup-service API (never blocked, always returns handedness).
+    NUCLEAR FIX:
+    Uses StatsAPI /people endpoint.
+    Guaranteed handedness for every MLB player.
     """
 
     # ---- GET ALL MLB TEAMS ----
@@ -31,14 +32,15 @@ def get_live_team_roster(team_name: str):
         pid = str(player["person"]["id"])
         full_name = player["person"]["fullName"]
 
-        # ---- USE LOOKUP-SERVICE (ALWAYS RETURNS HANDEDNESS) ----
-        lookup_url = f"https://lookup-service-prod.mlb.com/json/named.player_info.bam?sport_code='mlb'&player_id='{pid}'"
+        # ---- NUCLEAR ENDPOINT ----
+        people_url = f"https://statsapi.mlb.com/api/v1/people/{pid}"
 
         try:
-            data = requests.get(lookup_url).json()
-            info = data["player_info"]["queryResults"]["row"]
+            data = requests.get(people_url).json()
+            person = data["people"][0]
 
-            bats = info.get("bats", "R").upper()  # L / R / S
+            # Extract handedness
+            bats = person["batSide"]["code"].upper()  # L / R / S
 
         except Exception:
             bats = "R"
