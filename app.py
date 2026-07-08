@@ -99,19 +99,26 @@ if chosen_game and pitcher:
         real_stats_df = load_real_batter_stats()
         processed_rows = []
         
+        # --- REFINED DATA PIPELINE ---
         for b in live_batters:
             b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
-            match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean] if not real_stats_df.empty else pd.DataFrame()
+            
+            # Use 'str.contains' for a smarter, fuzzy match
+            match = real_stats_df[real_stats_df['Name_Clean'].str.contains(b_name_clean.split()[-1], na=False)]
             
             if not match.empty:
-                # Safely access columns
-                brl = float(match['Barrel%'].iloc[0]) if 'Barrel%' in match.columns else 8.0
-                hh = float(match['HardHit%'].iloc[0]) if 'HardHit%' in match.columns else 40.0
-                gb = float(match['GB%'].iloc[0]) if 'GB%' in match.columns else 42.0
-                pull = float(match['FB%'].iloc[0]) if 'FB%' in match.columns else 20.0
-                bbe = int(match['AB'].iloc[0]) if 'AB' in match.columns else 50
+                # Select the best match if multiple exist
+                best_match = match.iloc[0]
+                bbe = int(best_match.get('AB', 50))
+                brl = float(best_match.get('Barrel%', 8.0))
+                hh = float(best_match.get('HardHit%', 40.0))
+                gb = float(best_match.get('GB%', 42.0))
+                pull = float(best_match.get('FB%', 20.0))
             else:
+                # Default values remain as a safety net
                 bbe, brl, hh, gb, pull = 50, 8.0, 40.0, 42.0, 20.0
+            
+            # ... (Rest of your slam_index formula and row appending)
             
             slam_index = min(100.0, max(5.0, (brl * W_BRL) + (hh * W_HH) + (pull * W_PULL) - (gb * W_GB)))
             processed_rows.append({
