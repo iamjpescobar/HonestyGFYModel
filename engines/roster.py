@@ -1,13 +1,12 @@
 print(">>> USING SCRAPER VERSION <<<")
+
 import requests
 from bs4 import BeautifulSoup
 
 def get_live_team_roster(team_name: str):
     """
-    FINAL FIX:
-    Scrapes MLB.com player pages for handedness.
-    Works on Streamlit Cloud.
-    ALWAYS returns correct L/R/S.
+    Updated MLB.com scraper — works with the new 2026 layout.
+    Extracts handedness from the JSON-LD block instead of page text.
     """
 
     # ---- GET ALL MLB TEAMS ----
@@ -40,15 +39,22 @@ def get_live_team_roster(team_name: str):
             html = requests.get(mlb_url).text
             soup = BeautifulSoup(html, "html.parser")
 
-            # MLB always shows: "Bats: Left" or "Bats: Right" or "Bats: Switch"
-            bats_text = soup.find(string=lambda s: s and "Bats:" in s)
+            # MLB now stores handedness inside a JSON-LD script block
+            json_ld = soup.find("script", type="application/ld+json")
 
-            if bats_text:
-                bats = bats_text.split(":")[1].strip().upper()[0]  # L/R/S
-            else:
-                bats = "R"
+            bats = "R"  # default fallback
 
-        except:
+            if json_ld:
+                import json
+                data = json.loads(json_ld.text)
+
+                # Look for "batSide" field
+                if "batSide" in data and "code" in data["batSide"]:
+                    code = data["batSide"]["code"].upper()
+                    if code in ["L", "R", "S"]:
+                        bats = code
+
+        except Exception:
             bats = "R"
 
         batters.append({
