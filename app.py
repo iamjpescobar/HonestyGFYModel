@@ -99,8 +99,6 @@ if chosen_game and pitcher:
         real_stats_df = load_real_batter_stats()
         processed_rows = []
         
-        # --- REFINED DATA PIPELINE ---
-        # --- REFINED PRECISION PIPELINE ---
         for b in live_batters:
             b_name = b['name'].lower()
             # Split the name to find the last name for matching
