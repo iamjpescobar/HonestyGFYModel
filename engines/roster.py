@@ -50,7 +50,7 @@ def get_live_team_roster(team_name: str):
         batters.append({
             "name": full_name,
             "id": pid,
-            "hand": bats  # ← THIS IS NOW ALWAYS CORRECT
+            "hand": bats  # ← ALWAYS correct now
         })
 
     return batters
