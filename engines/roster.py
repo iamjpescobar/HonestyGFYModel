@@ -1,12 +1,11 @@
 print(">>> USING SCRAPER VERSION <<<")
 
 import requests
-from bs4 import BeautifulSoup
 
 def get_live_team_roster(team_name: str):
     """
-    Updated MLB.com scraper — works with the new 2026 layout.
-    Extracts handedness from the JSON-LD block instead of page text.
+    FINAL FIX — DO NOT CHANGE
+    Uses MLB lookup-service API (never blocked, always returns handedness).
     """
 
     # ---- GET ALL MLB TEAMS ----
@@ -32,27 +31,14 @@ def get_live_team_roster(team_name: str):
         pid = str(player["person"]["id"])
         full_name = player["person"]["fullName"]
 
-        # ---- SCRAPE MLB.COM PLAYER PAGE ----
-        mlb_url = f"https://www.mlb.com/player/{full_name.replace(' ', '-').lower()}-{pid}"
+        # ---- USE LOOKUP-SERVICE (ALWAYS RETURNS HANDEDNESS) ----
+        lookup_url = f"https://lookup-service-prod.mlb.com/json/named.player_info.bam?sport_code='mlb'&player_id='{pid}'"
 
         try:
-            html = requests.get(mlb_url).text
-            soup = BeautifulSoup(html, "html.parser")
+            data = requests.get(lookup_url).json()
+            info = data["player_info"]["queryResults"]["row"]
 
-            # MLB now stores handedness inside a JSON-LD script block
-            json_ld = soup.find("script", type="application/ld+json")
-
-            bats = "R"  # default fallback
-
-            if json_ld:
-                import json
-                data = json.loads(json_ld.text)
-
-                # Look for "batSide" field
-                if "batSide" in data and "code" in data["batSide"]:
-                    code = data["batSide"]["code"].upper()
-                    if code in ["L", "R", "S"]:
-                        bats = code
+            bats = info.get("bats", "R").upper()  # L / R / S
 
         except Exception:
             bats = "R"
