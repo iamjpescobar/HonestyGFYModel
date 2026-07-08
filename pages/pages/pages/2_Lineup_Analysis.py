@@ -49,7 +49,7 @@ if games:
 
     st.subheader(f"Lineup Analysis vs {opposing_team}")
 
-    # ---- GET ROSTER (THIS NOW RETURNS CORRECT HANDEDNESS) ----
+    # ---- GET ROSTER (NOW RETURNS CORRECT L/R/S) ----
     batters = get_live_team_roster(opposing_team)
 
     # ---- LOAD BATTING STATS ----
@@ -83,12 +83,21 @@ if games:
             affinity_mult=matchup_mult * affinity_mult
         )
 
-        # ⭐ FIXED: USE HANDEDNESS FROM ROSTER ONLY
-        hand = b["hand"]  # ← THIS IS THE FIX
+        # ⭐ FINAL FIX: Convert L/R/S → LHB/RHB/SHB
+        raw_hand = str(b["hand"]).upper()
+
+        if raw_hand == "L":
+            hand = "LHB"
+        elif raw_hand == "R":
+            hand = "RHB"
+        elif raw_hand == "S":
+            hand = "SHB"
+        else:
+            hand = "RHB"
 
         rows.append({
             "Batter": b["name"],
-            "Hand": hand,  # ← NOW CORRECT
+            "Hand": hand,
             "SLAM": round(slam, 1),
             "Matchup": tag,
             "BBE": prof["BBE"],
@@ -102,7 +111,6 @@ if games:
     df = pd.DataFrame(rows).set_index("Batter")
     st.dataframe(df, use_container_width=True)
 
-    # ---- SLAM INDEX BAR CHART ----
     slam_chart = (
         alt.Chart(df.reset_index())
         .mark_bar()
