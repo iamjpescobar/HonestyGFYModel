@@ -61,9 +61,13 @@ def get_live_team_roster(team_name):
 def load_real_batter_stats():
     try:
         df = batting_stats(2026, qual=10)
-        df['Name_Clean'] = df['Name'].str.lower().str.replace('[.,\']', '', regex=True)
+        # Create the column, but handle if 'Name' doesn't exist
+        if 'Name' in df.columns:
+            df['Name_Clean'] = df['Name'].str.lower().str.replace('[.,\']', '', regex=True)
         return df
-    except Exception: return pd.DataFrame()
+    except Exception as e:
+        st.error(f"Stats Load Error: {e}")
+        return pd.DataFrame() # Return empty df to prevent crashes
 
 # --- 4. CONDITIONAL HEATMAP GENERATOR ---
 def highlight_slam(row):
