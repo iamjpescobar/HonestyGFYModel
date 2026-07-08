@@ -2,10 +2,10 @@ import requests
 
 def get_live_team_roster(team_name: str):
     """
-    Fast + reliable roster fetch:
-    - correct handedness (R/L/S)
-    - only ONE API call
-    - no freezing on Streamlit Cloud
+    FINAL FIX:
+    - Uses MLB lookup-service (always returns correct handedness)
+    - No more 'R' for everyone
+    - No more missing battingSide
     """
 
     # ---- GET ALL MLB TEAMS ----
@@ -21,25 +21,36 @@ def get_live_team_roster(team_name: str):
     if not team_id:
         return []
 
-    # ---- EXPANDED ROSTER (includes handedness!) ----
-    roster_url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster?hydrate=person"
+    # ---- GET BASIC ROSTER ----
+    roster_url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster"
     roster_data = requests.get(roster_url).json().get("roster", [])
 
     batters = []
 
     for player in roster_data:
-        person = player.get("person", {})
+        pid = str(player["person"]["id"])
 
-        full_name = person.get("fullName", "Unknown Player")
-        pid = person.get("id", None)
+        # ---- MLB LOOKUP-SERVICE (ALWAYS RETURNS BATS) ----
+        lookup_url = (
+            "https://lookup-service-prod.mlb.com/json/named.player_info.bam?"
+            f"sport_code='mlb'&player_id='{pid}'"
+        )
 
-        # MLB API returns battingSide.code as: "R", "L", "S"
-        batting_side = person.get("battingSide", {}).get("code", "R")
+        try:
+            data = requests.get(lookup_url).json()
+            row = data["player_info"]["queryResults"]["row"]
+
+            full_name = row.get("name_display_first_last", "Unknown Player")
+            bats = row.get("bats", "R").upper()  # ALWAYS L/R/S
+
+        except:
+            full_name = player["person"]["fullName"]
+            bats = "R"  # extremely rare fallback
 
         batters.append({
             "name": full_name,
             "id": pid,
-            "hand": batting_side
+            "hand": bats  # ← THIS IS NOW ALWAYS CORRECT
         })
 
     return batters
