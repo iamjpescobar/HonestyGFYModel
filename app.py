@@ -3,7 +3,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta  # <--- THIS IS THE FIX
 from pybaseball import statcast_pitcher, playerid_lookup, batting_stats
 
 # --- 1. SET LAYOUT CONFIGURATION ---
@@ -148,7 +148,7 @@ def highlight_slam(row):
 
 # --- 5. APPLICATION INTERFACE AND CONTROL RUNNER ---
 
-# 1. Initialize session state variables so they are NEVER undefined
+# Initialize session state so variables always exist
 if 'chosen_game' not in st.session_state: st.session_state.chosen_game = None
 if 'pitcher' not in st.session_state: st.session_state.pitcher = None
 
@@ -165,32 +165,30 @@ with st.sidebar:
         game_options = [f"{g['away']} @ {g['home']}" for g in games]
         selected_idx = st.selectbox("Select Matchup:", range(len(game_options)), format_func=lambda x: game_options[x])
         st.session_state.chosen_game = games[selected_idx]
-        
-        st.markdown("---")
-        st.session_state.pitcher = st.radio(
-            "Select Pitcher to Target:", 
-            [st.session_state.chosen_game['away_pitcher'], st.session_state.chosen_game['home_pitcher']]
-        )
+        st.session_state.pitcher = st.radio("Select Pitcher to Target:", [st.session_state.chosen_game['away_pitcher'], st.session_state.chosen_game['home_pitcher']])
     else:
         st.warning("No games found.")
         st.session_state.chosen_game = None
         st.session_state.pitcher = None
 
-# 2. Main Logic: Access variables from session_state
-chosen_game = st.session_state.chosen_game
-pitcher = st.session_state.pitcher
-
-if chosen_game and pitcher and pitcher != "TBD":
+# Main runner using session state
+if st.session_state.chosen_game and st.session_state.pitcher:
+    chosen_game = st.session_state.chosen_game
+    pitcher = st.session_state.pitcher
     opposing_team = chosen_game['home'] if pitcher == chosen_game['away_pitcher'] else chosen_game['away']
     st.write(f"## 📋 Pro-Report: {pitcher}")
     
     try:
-        # [PASTE YOUR EXISTING DATA PROCESSING LOGIC HERE]
-        # ENSURE ALL LINES BELOW ARE INDENTED BY 8 SPACES
+        # [YOUR EXISTING LOGIC STARTS HERE - ENSURE ALL THESE LINES ARE INDENTED BY 8 SPACES]
         clean_name = pitcher.encode('ascii', 'ignore').decode('utf-8').replace('.', '').replace(',', '')
-        # ... rest of your original logic ...
+        names = clean_name.split(" ")
+        first, last = names[0], names[-1]
+        if "Cristopher" in pitcher: first, last = "Cristopher", "Sanchez"
+        
+        id_df = playerid_lookup(last, first)
+        # ... (Continue with your original logic, keeping everything indented 8 spaces)
         
     except Exception as e:
         st.error(f"Error processing report: {e}")
 else:
-    st.info("Please select a matchup and pitcher in the sidebar to initialize the report.")
+    st.info("Select a matchup and pitcher in the sidebar to initialize.")
