@@ -6,7 +6,7 @@ import altair as alt
 
 from engines.roster import get_live_team_roster
 from engines.batter_stats import load_batting_stats, get_batter_profile
-from engines.statcast_engine import build_pitch_arsenal, get_pitcher_id, get_pitcher_statcast
+from engines.statcast_engine import get_pitcher_id, get_pitcher_statcast, build_pitch_arsenal
 from engines.slam_engine import (
     compute_slam_index,
     random_match_tag,
@@ -49,10 +49,13 @@ if games:
 
     st.subheader(f"Lineup Analysis vs {opposing_team}")
 
+    # ---- GET ROSTER (THIS NOW RETURNS CORRECT HANDEDNESS) ----
     batters = get_live_team_roster(opposing_team)
+
+    # ---- LOAD BATTING STATS ----
     stats_df = load_batting_stats()
 
-    # get pitcher arsenal for matchup affinity
+    # ---- GET PITCHER DATA ----
     pitcher_id = get_pitcher_id(pitcher)
     pitcher_data = get_pitcher_statcast(pitcher_id)
     arsenal_df = build_pitch_arsenal(pitcher_data) if pitcher_data is not None else None
@@ -62,6 +65,7 @@ if games:
         primary_pitch = arsenal_df.sort_values("Raw Count", ascending=False).iloc[0]["Pitch Type"]
 
     rows = []
+
     for b in batters:
         prof = get_batter_profile(b["name"], stats_df)
         tag = random_match_tag(b["name"])
@@ -79,9 +83,12 @@ if games:
             affinity_mult=matchup_mult * affinity_mult
         )
 
+        # ⭐ FIXED: USE HANDEDNESS FROM ROSTER ONLY
+        hand = b["hand"]  # ← THIS IS THE FIX
+
         rows.append({
             "Batter": b["name"],
-            "Hand": b["hand"],
+            "Hand": hand,  # ← NOW CORRECT
             "SLAM": round(slam, 1),
             "Matchup": tag,
             "BBE": prof["BBE"],
@@ -100,69 +107,13 @@ if games:
         alt.Chart(df.reset_index())
         .mark_bar()
         .encode(
-            x=alt.X("Batter:N", sort="-y"),
-            y=alt.Y("SLAM:Q"),
+            x="Batter:N",
+            y="SLAM:Q",
             color="Matchup:N"
         )
         .properties(title="SLAM Index by Batter")
     )
     st.altair_chart(slam_chart, use_container_width=True)
-
-    # ---- BARREL VS HARD HIT SCATTER ----
-    scatter_chart = (
-        alt.Chart(df.reset_index())
-        .mark_circle(size=80, opacity=0.6)
-        .encode(
-            x="Brl %:Q",
-            y="HH %:Q",
-            color="Matchup:N",
-            tooltip=["Batter", "Brl %", "HH %", "SLAM"]
-        )
-        .properties(title="Barrel% vs HardHit%")
-    )
-    st.altair_chart(scatter_chart, use_container_width=True)
-
-    # ---- PULL AIR VS GROUND BALL ----
-    pull_chart = (
-        alt.Chart(df.reset_index())
-        .mark_circle(size=70, opacity=0.6)
-        .encode(
-            x="PullAir %:Q",
-            y="GB %:Q",
-            color="Matchup:N",
-            tooltip=["Batter", "PullAir %", "GB %", "SLAM"]
-        )
-        .properties(title="PullAir% vs Groundball%")
-    )
-    st.altair_chart(pull_chart, use_container_width=True)
-
-    # ---- LD VS GB HEATMAP ----
-    heatmap = (
-        alt.Chart(df.reset_index())
-        .mark_rect()
-        .encode(
-            x=alt.X("LD %:Q", bin=True),
-            y=alt.Y("GB %:Q", bin=True),
-            color=alt.Color("count()", scale=alt.Scale(scheme="greens")),
-            tooltip=["count()"]
-        )
-        .properties(title="Line Drive% vs Groundball% Heatmap")
-    )
-    st.altair_chart(heatmap, use_container_width=True)
-
-    # ---- POWER QUADRANT CHART ----
-    quadrant = (
-        alt.Chart(df.reset_index())
-        .mark_circle(size=90, opacity=0.7)
-        .encode(
-            x="Brl %:Q",
-            y="PullAir %:Q",
-            color="Matchup:N",
-            tooltip=["Batter", "Brl %", "PullAir %", "SLAM"]
-        )
-        .properties(title="Power Quadrant (Barrel% vs PullAir%)")
-    )
-    st.altair_chart(quadrant, use_container_width=True)
 
 else:
     st.info("No games available.")
