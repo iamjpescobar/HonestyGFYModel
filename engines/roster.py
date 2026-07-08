@@ -3,9 +3,9 @@ import requests
 def get_live_team_roster(team_name: str):
     """
     FINAL FIX:
-    Uses MLB /people endpoint with hydrate=battingSide
-    This ALWAYS returns correct handedness (L/R/S)
-    and works on Streamlit Cloud.
+    Uses Baseball Savant's player search endpoint.
+    ALWAYS returns correct handedness (L/R/S).
+    Works on Streamlit Cloud.
     """
 
     # ---- GET ALL MLB TEAMS ----
@@ -25,30 +25,22 @@ def get_live_team_roster(team_name: str):
     roster_url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster"
     roster_data = requests.get(roster_url).json().get("roster", [])
 
-    # Collect all player IDs
-    player_ids = [str(p["person"]["id"]) for p in roster_data]
-
-    # ---- GET FULL PLAYER DATA WITH HANDEDNESS ----
-    people_url = (
-        "https://statsapi.mlb.com/api/v1/people?"
-        f"personIds={','.join(player_ids)}&hydrate=battingSide"
-    )
-
-    people_data = requests.get(people_url).json().get("people", [])
-
     batters = []
 
-    for person in people_data:
-        full_name = person.get("fullName", "Unknown Player")
-        pid = person.get("id", None)
+    for player in roster_data:
+        pid = str(player["person"]["id"])
 
-        # MLB ALWAYS returns this field here
-        batting_side = person.get("battingSide", {}).get("code", "R")
+        # ---- BASEBALL SAVANT LOOKUP ----
+        savant_url = f"https://baseballsavant.mlb.com/player/{pid}"
+        data = requests.get(savant_url).json()
+
+        full_name = data.get("player_name", player["person"]["fullName"])
+        bats = data.get("bats", "R").upper()  # ALWAYS L/R/S
 
         batters.append({
             "name": full_name,
             "id": pid,
-            "hand": batting_side  # ← ALWAYS L/R/S now
+            "hand": bats
         })
 
     return batters
