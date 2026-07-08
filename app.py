@@ -73,37 +73,33 @@ def get_static_games():
 @st.cache_data(ttl=3600)
 def get_live_team_roster(team_name):
     team_id = MLB_TEAM_IDS.get(team_name)
-    if not team_id: return []
+    if not team_id: 
+        return []
+        
     url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster?rosterType=active"
     try:
         response = requests.get(url).json()
         players = []
         for p in response.get('roster', []):
             person = p.get('person', {})
-            # This line fixes the Handedness issue
-            side_code = person.get('batSide', {}).get('code', 'R')
+            pos = p.get('position', {})
+            
+            # Use safe dictionary access to avoid NoneType errors
+            bat_side = person.get('batSide')
+            side_code = bat_side.get('code', 'R') if bat_side else 'R'
             side_label = "LHB" if side_code == 'L' else ("SHB" if side_code == 'S' else "RHB")
             
-            if p.get('position', {}).get('code') != '1':
-                players.append({"name": person['fullName'], "hand": side_label})
-        return players
-    except:
-        return []
-    url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster?rosterType=active"
-    try:
-        response = requests.get(url).json()
-        roster = response.get('roster', [])
-        players = []
-        for p in roster:
-            person = p.get('person', {})
-            pos = p.get('position', {})
             if pos.get('code') != '1' and person.get('fullName'):
                 players.append({
                     "name": person['fullName'],
-                    "hand": "LHB" if person.get('batSide', {}).get('code') == 'L' else "RHB"
+                    "hand": side_label
                 })
         return players
-    except Exception:
+    except Exception as e:
+        # Debugging: Uncomment the line below if you continue to have issues
+        # st.error(f"Error fetching roster for {team_name}: {e}")
+        
+        # Fallback for when API fails
         if "Royals" in team_name:
             return [{"name": "Jac Caglianone", "hand": "LHB"}, {"name": "Luke Maile", "hand": "RHB"}, {"name": "Nick Loftin", "hand": "RHB"}, {"name": "Salvador Perez", "hand": "RHB"}]
         return [{"name": "Andrés Chaparro", "hand": "RHB"}, {"name": "CJ Abrams", "hand": "LHB"}, {"name": "Curtis Mead", "hand": "RHB"}]
