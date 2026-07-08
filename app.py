@@ -52,13 +52,34 @@ if pitcher and pitcher != "TBD":
     st.markdown("---")
 
     try:
-        # --- YOUR DATA PROCESSING LOGIC ---
-        live_batters = get_live_team_roster("Toronto Blue Jays")
+        # --- YOUR REAL DATA PROCESSING ---
+        live_batters = get_live_team_roster(opposing_team) # 'opposing_team' is defined earlier in your script
+        real_stats_df = load_real_batter_stats()
         processed_rows = []
+
         for b in live_batters:
-            processed_rows.append({"Batter Name": b['name'], "Hand": b['hand'], "BBE": 50, "💥 SLAM Index": 66.0, "Brl %": 8.0, "HH %": 40.0, "GB %": 42.0})
-        
+            b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
+            match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean] if not real_stats_df.empty else pd.DataFrame()
+            
+            if not match.empty:
+                # Extract real stats
+                bbe = int(match['AB'].iloc[0])
+                brl = float(match['Barrel%'].iloc[0])
+                hh = float(match['HardHit%'].iloc[0])
+                gb = float(match['GB%'].iloc[0])
+                pull_air = float(match['FB%'].iloc[0])
+            else:
+                # Fallback to random if no stats found
+                bbe, brl, hh, gb, pull_air = 50, 8.0, 40.0, 42.0, 20.0
+
+            # Calculate the S.L.A.M. Index
+            slam_index = min(100.0, max(5.0, (brl * 3.5) + (hh * 0.5) + (pull_air * 0.3) - (gb * 0.2)))
+            
+            processed_rows.append({
+                "Batter Name": b['name'], "Hand": b['hand'], "BBE": bbe, 
+                "💥 SLAM Index": round(slam_index, 1), "Brl %": brl, "HH %": hh, "GB %": gb
+            })
+
+        # Render the final data
         df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
         st.dataframe(df_lineup.style.apply(highlight_slam, axis=1), use_container_width=True)
-    except Exception as e:
-        st.error(f"Error: {e}")
