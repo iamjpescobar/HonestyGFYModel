@@ -45,12 +45,39 @@ if pitcher and pitcher != "TBD":
     st.markdown("---")
 
     try:
-        # DATA PROCESSING
-        # Note: Replace these placeholders with your actual function calls if needed
-        processed_rows = [{"Batter Name": "Sample Batter", "Hand": "RHB", "BBE": 50, "💥 SLAM Index": 66.0, "Brl %": 8.0, "HH %": 40.0, "GB %": 42.0}]
-        
+        # 1. Fetch live roster for the opposing team
+        # 'opposing_team' is determined by your sidebar selection
+        live_batters = get_live_team_roster(opposing_team) 
+        real_stats_df = load_real_batter_stats()
+        processed_rows = []
+
+        # 2. Iterate and process each batter
+        for b in live_batters:
+            b_name_clean = b['name'].lower().replace('.', '').replace(',', '').replace("'", "")
+            match = real_stats_df[real_stats_df['Name_Clean'] == b_name_clean] if not real_stats_df.empty else pd.DataFrame()
+            
+            # Logic to calculate S.L.A.M. Index
+            if not match.empty:
+                bbe = int(match['AB'].iloc[0])
+                brl = float(match['Barrel%'].iloc[0])
+                hh = float(match['HardHit%'].iloc[0])
+                gb = float(match['GB%'].iloc[0])
+                pull_air = float(match['FB%'].iloc[0])
+            else:
+                bbe, brl, hh, gb, pull_air = 50, 12.0, 40.0, 20.0, 20.0
+            
+            # THE FORMULA: Adjusted to your liking
+            slam_index = min(100.0, max(5.0, (brl * 3.5) + (hh * 0.5) + (pull_air * 0.3) - (gb * 0.2)))
+            
+            processed_rows.append({
+                "Batter Name": b['name'], "Hand": b['hand'], "BBE": bbe, 
+                "💥 SLAM Index": round(slam_index, 1), "Brl %": brl, "HH %": hh, "GB %": gb
+            })
+
+        # 3. Render the final, full-lineup Table
+        st.markdown(f"### ⚔️ Intent-To-Homer Lineup Analysis vs. {opposing_team}")
         df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
         st.dataframe(df_lineup.style.apply(highlight_slam, axis=1), use_container_width=True)
         
     except Exception as e:
-        st.error(f"Error processing data: {e}")
+        st.error(f"Error processing lineup: {e}")
