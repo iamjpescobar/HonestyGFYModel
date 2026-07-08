@@ -8,16 +8,16 @@ from engines.slam_engine import compute_slam_index, random_match_tag
 st.set_page_config(layout="wide", page_title="KC-Style Lineup Table")
 
 st.title("⚔️ KC-Style Lineup Analysis")
-st.markdown("### 🟢 Emerald Glow = Verified Power | ⚫ Matte Grey = Small Sample Size | 🔥 Arsenal Coverage | 🎯 Top-3 Matchup Ranking")
+st.markdown("### 🟢 Emerald Glow | ⚫ Matte Grey | 🔥 Arsenal Coverage | 🎯 Top-3 Matchup Ranking | 📊 Full Scout Card Expansion")
 st.markdown("---")
 
 # ---------------------------------------------------------
 # ARSENAL COVERAGE ICON LOGIC
 # ---------------------------------------------------------
 def coverage_icon(value):
-    if value >= 0.12:   # strong affinity
+    if value >= 0.12:
         return "🔥"
-    elif value >= 0.06: # weak affinity
+    elif value >= 0.06:
         return "⚠️"
     return "❌"
 
@@ -26,15 +26,15 @@ def coverage_icon(value):
 # ---------------------------------------------------------
 def matchup_color(val):
     if val == "ELITE":
-        return "background-color: #00b36b; color: white; font-weight: bold;"  # Emerald
+        return "background-color: #00b36b; color: white; font-weight: bold;"
     elif val == "GOOD":
-        return "background-color: #1e90ff; color: white;"  # Blue
+        return "background-color: #1e90ff; color: white;"
     elif val == "Neutral":
         return ""
     elif val == "Cold":
-        return "background-color: #7a7a7a; color: white;"  # Grey
+        return "background-color: #7a7a7a; color: white;"
     elif val == "⚠️":
-        return "background-color: #ff4500; color: white;"  # Danger
+        return "background-color: #ff4500; color: white;"
     return ""
 
 team_name = st.text_input("Enter Opposing Team:", "Baltimore Orioles")
@@ -47,7 +47,7 @@ if st.button("Load Lineup"):
 
     for b in live_batters:
         prof = get_batter_profile(b["name"], stats_df)
-        tag = random_match_tag(b["name"])  # Top-3 matchup tag
+        tag = random_match_tag(b["name"])
 
         slam = compute_slam_index(
             brl=prof["Brl %"],
@@ -112,7 +112,7 @@ if st.button("Load Lineup"):
                      })
 
     # ---------------------------------------------------------
-    # DISPLAY TABLE WITH COVERAGE ICONS + MATCHUP RANK
+    # DISPLAY TABLE
     # ---------------------------------------------------------
     st.dataframe(
         styled,
@@ -128,29 +128,47 @@ if st.button("Load Lineup"):
     )
 
     st.markdown("---")
-    st.subheader("🔍 Detailed Scout Card")
+    st.subheader("🔍 Full KC Scout Card")
 
     selected = st.selectbox("Select Batter:", ["--"] + list(df.index))
 
     if selected != "--":
         sb = df.loc[selected]
 
-        st.markdown(f"### 📊 {selected} — Scout Breakdown")
+        st.markdown(f"### 📊 {selected} — Full KC Scout Breakdown")
 
+        # ---------------------------------------------------------
+        # TOP METRICS
+        # ---------------------------------------------------------
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("SLAM Index", sb["SLAM"])
         c2.metric("Barrel %", f"{sb['Brl %']}%")
         c3.metric("Hard Hit %", f"{sb['HH %']}%")
         c4.metric("BBE Sample", sb["BBE"])
 
-        st.markdown("#### Power Profile")
+        # ---------------------------------------------------------
+        # POWER PROFILE SECTION
+        # ---------------------------------------------------------
+        st.markdown("### 🔋 Power Profile")
         st.write(f"- **PullAir %:** {sb['PullAir %']}%")
         st.write(f"- **Line Drive %:** {sb['LD %']}%")
         st.write(f"- **Groundball %:** {sb['GB %']}%")
 
-        st.markdown("#### Arsenal Coverage")
+        # ---------------------------------------------------------
+        # ARSENAL COVERAGE SECTION
+        # ---------------------------------------------------------
+        st.markdown("### 🎯 Arsenal Coverage")
         st.write(f"**FF:** {sb['FF']}  |  **SL:** {sb['SL']}  |  **CH:** {sb['CH']}")
         st.write(f"**SI:** {sb['SI']}  |  **SW:** {sb['SW']}  |  **CU:** {sb['CU']}")
 
-        st.markdown("#### Matchup Tag")
+        # ---------------------------------------------------------
+        # MATCHUP TAG SECTION
+        # ---------------------------------------------------------
+        st.markdown("### ⚔️ Matchup Tag")
         st.write(f"**{sb['Matchup']}**")
+
+        # ---------------------------------------------------------
+        # HISTORICAL PERFORMANCE SECTION (KC STYLE)
+        # ---------------------------------------------------------
+        st.markdown("### 📈 Historical Performance Snapshot")
+        st.info("Historical performance charts, heatmaps, and pitch-type danger zones can be added here.")
