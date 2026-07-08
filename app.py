@@ -70,15 +70,34 @@ def load_real_batter_stats():
         return df
     except Exception: return pd.DataFrame()
 
-# --- 4. CONDITIONAL HEATMAP GENERATOR ---
+# --- 4. FIXED CONDITIONAL HEATMAP GENERATOR ---
 def highlight_slam(row):
+    # Create an empty list of styles matching the number of columns
     styles = [''] * len(row)
     try:
-        slam_val, bbe_val = float(row['💥 SLAM Index']), int(row['BBE'])
-        if bbe_val < 25: styles = ['background-color: #22222b; color: #7c7c8c; font-style: italic; opacity: 0.5;'] * len(row)
-        elif slam_val >= 65.0: styles = ['background-color: #0f401b; color: #a3ffb4; font-weight: bold;'] * len(row)
-    except: pass
+        # Match keys exactly to the keys in the dictionary passed to DataFrame
+        slam_val = float(row['💥 SLAM Index'])
+        bbe_val = int(row['BBE'])
+        
+        # Logic: If sample size is too small, gray it out. If index is high, highlight green.
+        if bbe_val < 25:
+            styles = ['background-color: #22222b; color: #7c7c8c; font-style: italic; opacity: 0.5;'] * len(row)
+        elif slam_val >= 60.0: # Adjusted threshold for better visibility
+            styles = ['background-color: #0f401b; color: #a3ffb4; font-weight: bold;'] * len(row)
+    except Exception:
+        pass
     return styles
+
+# --- 5. UPDATED DISPLAY BLOCK ---
+# ... inside your try block after generating processed_rows ...
+        
+        df_lineup = pd.DataFrame(processed_rows)
+        
+        # Apply the style. axis=1 applies the function to each row.
+        styled_df = df_lineup.style.apply(highlight_slam, axis=1)
+        
+        # Display without setting the index as a string to keep 'Batter Name' as a column
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
 
 # --- 5. APPLICATION INTERFACE AND CONTROL RUNNER ---
 with st.sidebar:
@@ -127,8 +146,34 @@ if st.session_state.chosen_game and st.session_state.pitcher:
                 "💥 SLAM Index": round(slam_index, 1), "Brl %": brl, "HH %": hh, "GB %": gb
             })
             
-        df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
-        st.dataframe(df_lineup.style.apply(highlight_slam, axis=1), use_container_width=True)
+        df_lineup = pd.DataFrame(processed_rows)
+        
+        # Create styled dataframe
+        styled_df = (
+            df_lineup.style.background_gradient(
+                subset=['💥 SLAM Index'], 
+                cmap='YlOrRd', 
+                vmin=20, 
+                vmax=70
+            )
+            .format({'💥 SLAM Index': '{:.1f}'})
+        )
+        
+        # Display the visual dataframe
+        st.dataframe(
+            styled_df, 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "💥 SLAM Index": st.column_config.ProgressColumn(
+                    "💥 SLAM Index",
+                    help="The calculated Intent-To-Homer score",
+                    format="%.1f",
+                    min_value=0,
+                    max_value=100,
+                )
+            }
+        )
                 
     except Exception as e:
         st.error(f"Error: {e}")
