@@ -63,10 +63,7 @@ def get_todays_games():
         return get_static_games()
 
 def get_static_games():
-    return [
-        {"game_id": 1, "away": "Philadelphia Phillies", "home": "Kansas City Royals", "away_pitcher": "Cristopher Sanchez", "home_pitcher": "Noah Cameron"},
-        {"game_id": 2, "away": "Houston Astros", "home": "Washington Nationals", "away_pitcher": "Mike Burrows", "home_pitcher": "Miles Mikolas"}
-    ]
+    return []
 
 @st.cache_data(ttl=3600)
 def get_live_team_roster(team_name):
