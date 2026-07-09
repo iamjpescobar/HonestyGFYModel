@@ -9,17 +9,17 @@ def compute_matchup_multiplier(batter_profile: dict, pitcher_profile: dict):
         matchup_tag (str)
     """
 
-    # Batter strengths
-    brl = batter_profile["Brl %"]
-    hh = batter_profile["HH %"]
-    pull_air = batter_profile["PullAir %"]
-    ld = batter_profile["LD %"]
+    # Batter strengths (defensive .get() so missing keys never crash the app)
+    brl = batter_profile.get("Brl %", 0)
+    hh = batter_profile.get("HH %", 0)
+    pull_air = batter_profile.get("PullAir %", 0)
+    ld = batter_profile.get("LD %", 0)
 
-    # Pitcher weaknesses
-    hr_bbe = pitcher_profile["HR/BBE"]
-    hh_allowed = pitcher_profile["HH Allowed %"]
-    ld_allowed = pitcher_profile["LD Allowed %"]
-    zone_vuln = pitcher_profile["ZoneVuln Score"]  # from pitcher danger zone
+    # Pitcher weaknesses — sourced from statcast_engine's actual profile keys
+    hr_bbe = pitcher_profile.get("HR/BBE", 0)
+    hh_allowed = pitcher_profile.get("HH %", 0)
+    ld_allowed = pitcher_profile.get("LD %", 0)
+    zone_vuln = pitcher_profile.get("ZoneContact %", 0)  # higher zone contact allowed = more vulnerable
 
     # Batter damage score
     score = (
