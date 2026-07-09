@@ -7,13 +7,17 @@ def compute_pitch_affinity_multiplier(batter_profile: dict, pitcher_arsenal: dic
     - Returns pitch_affinity_mult (float)
     """
 
-    # Batter affinity vs pitch types
-    ff_aff = batter_profile["FF Affinity"]
-    sl_aff = batter_profile["SL Affinity"]
-    ch_aff = batter_profile["CH Affinity"]
-    si_aff = batter_profile["SI Affinity"]
-    sw_aff = batter_profile["SW Affinity"]
-    cu_aff = batter_profile["CU Affinity"]
+    # Batter affinity vs pitch types.
+    # NOTE: real per-pitch-type batter splits aren't wired up yet, so this
+    # defaults every pitch type to 0.10 (the engine's own "neutral" value)
+    # rather than crashing. Swap these .get() defaults out once real
+    # Statcast pitch-type splits are added to batter_stats.py.
+    ff_aff = batter_profile.get("FF Affinity", 0.10)
+    sl_aff = batter_profile.get("SL Affinity", 0.10)
+    ch_aff = batter_profile.get("CH Affinity", 0.10)
+    si_aff = batter_profile.get("SI Affinity", 0.10)
+    sw_aff = batter_profile.get("SW Affinity", 0.10)
+    cu_aff = batter_profile.get("CU Affinity", 0.10)
 
     # Pitcher usage %
     ff_use = pitcher_arsenal.get("FF %", 0.0)
