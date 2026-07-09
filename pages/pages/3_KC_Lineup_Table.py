@@ -4,8 +4,8 @@ import altair as alt
 
 from engines.roster import get_live_team_roster
 from engines.batter_stats import load_batting_stats, get_batter_profile
-from engines.slam_engine import compute_slam_index, random_match_tag
-from engines.pitcher_stats import get_pitch_arsenal
+from engines.slam_engine import compute_slam_index
+from engines.pitcher_stats import get_pitch_arsenal, get_pitcher_profile
 from engines.bvp_engine import get_bvp_history
 from engines.danger_zone import build_danger_zone
 from engines.pitcher_danger_zone import build_pitcher_danger_zone
@@ -91,7 +91,8 @@ st.markdown("---")
 pitcher_name = st.text_input("Pitcher Name:", "Spencer Arrighetti")
 
 if pitcher_name:
-    arsenal = get_pitch_arsenal(pitcher_name)
+    arsenal = get_pitch_arsenal(pitcher_name)          # real pitch mix data
+    pitcher_profile = get_pitcher_profile(pitcher_name)  # real pitcher metrics
 
     st.markdown('<div class="arsenal-card">', unsafe_allow_html=True)
     st.markdown(f'<div class="arsenal-title">Pro-Report: {pitcher_name}</div>', unsafe_allow_html=True)
@@ -103,14 +104,6 @@ if pitcher_name:
     st.dataframe(arsenal, use_container_width=True)
 
     st.markdown("### 🔥 Pitcher Danger Zone Heatmap")
-
-    pitcher_profile = {
-        "HR/BBE": arsenal["Raw Count"].sum() / 1000,  # placeholder logic
-        "HH %": 32.0,
-        "LD %": 21.0,
-        "Brl %": 7.5,
-        "ZoneContact %": 84.0,
-    }
 
     pdz = build_pitcher_danger_zone(pitcher_profile)
     pdz_reset = pdz.reset_index().melt(id_vars="index")
@@ -169,14 +162,13 @@ def matchup_color(val: str) -> str:
 team_name = st.text_input("Enter Opposing Team:", "Washington Nationals")
 
 if st.button("Load Lineup"):
-    live_batters = get_live_team_roster(team_name)
-    stats_df = load_batting_stats()
+    live_batters = get_live_team_roster(team_name)   # real live roster
+    stats_df = load_batting_stats()                  # real batting stats
 
     processed_rows = []
 
     for b in live_batters:
-        prof = get_batter_profile(b["name"], stats_df)
-        tag = random_match_tag(b["name"])
+        prof = get_batter_profile(b["name"], stats_df)  # real batter profile
 
         slam = compute_slam_index(
             brl=prof["Brl %"],
@@ -184,7 +176,7 @@ if st.button("Load Lineup"):
             pull_air=prof["PullAir %"],
             gb=prof["GB %"],
             bbe=prof["BBE"],
-            matchup_tag=tag,
+            matchup_tag=prof["Matchup Tag"],  # MUST come from real data
             affinity_mult=1.0,
         )
 
@@ -194,7 +186,7 @@ if st.button("Load Lineup"):
                 "Hand": b["hand"],
                 "BBE": prof["BBE"],
                 "SLAM": round(slam, 1),
-                "Top 3 Matchup": tag,
+                "Top 3 Matchup": prof["Matchup Tag"],
                 "Brl %": prof["Brl %"],
                 "HH %": prof["HH %"],
                 "PullAir %": prof["PullAir %"],
@@ -282,7 +274,7 @@ if st.button("Load Lineup"):
         st.write(f"**{sb['Top 3 Matchup']}**")
 
         st.markdown("### ⚾ Batter vs Pitcher History")
-        bvp = get_bvp_history(pitcher_name, selected)
+        bvp = get_bvp_history(pitcher_name, selected)  # should hit your real BvP data
 
         if bvp.empty:
             st.info("No historical matchup data available.")
