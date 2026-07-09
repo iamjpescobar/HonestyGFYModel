@@ -1,72 +1,125 @@
-import streamlit as st
 import pandas as pd
-from pybaseball import statcast_pitcher, playerid_lookup
+from pybaseball import statcast_batter, statcast_pitcher
 
-# Map Statcast pitch codes to readable names
-PITCH_CODE_MAP = {
-    'FF': '4-Seam Fastball', 'SL': 'Slider', 'CH': 'Changeup',
-    'SI': 'Sinker', 'CU': 'Curveball', 'FC': 'Cutter',
-    'ST': 'Sweeper', 'FS': 'Splitter', 'KC': 'Knuckle-Curve'
-}
 
-@st.cache_data(ttl=7200)
-def get_pitcher_id(full_name: str):
+# ============================================================
+# SAFE STATCAST ENGINE (BATTER + PITCHER IN ONE FILE)
+# ============================================================
+
+def _safe_statcast_pull(func, player_id):
     """
-    Convert a pitcher name into an MLBAM ID using pybaseball's fuzzy lookup.
+    Safest possible Statcast pull wrapper.
+    Prevents crashes, returns empty DataFrame if needed.
     """
-    clean = full_name.replace(".", "").replace(",", "")
-    parts = clean.split()
-
-    # Handle special cases
-    first, last = parts[0], parts[-1]
-    if "Cristopher" in full_name:
-        first, last = "Cristopher", "Sanchez"
-
-    df = playerid_lookup(last, first, fuzzy=True)
-    if df.empty:
-        return None
-
-    return int(df.iloc[0]["key_mlbam"])
-
-@st.cache_data(ttl=7200)
-def get_pitcher_statcast(pitcher_id: int):
-    """
-    Pull Statcast data for the pitcher.
-    """
-    if pitcher_id is None:
-        return pd.DataFrame()
-
     try:
-        return statcast_pitcher("2026-04-01", "2026-10-01", pitcher_id)
+        df = func(player_id)
+        if df is None or len(df) == 0:
+            return pd.DataFrame()
+        return df
     except Exception:
         return pd.DataFrame()
 
-def build_pitch_arsenal(pitcher_data: pd.DataFrame):
-    """
-    Build a pitch arsenal table from Statcast pitch_type frequencies.
-    """
-    if pitcher_data is None or pitcher_data.empty or "pitch_type" not in pitcher_data.columns:
-        # Fallback arsenal for debuting or missing pitchers
-        return pd.DataFrame([
-            {"Pitch Type": "4-Seam Fastball", "Frequency": "45.0%", "Raw Count": 700},
-            {"Pitch Type": "Cutter", "Frequency": "27.0%", "Raw Count": 420},
-            {"Pitch Type": "Sinker", "Frequency": "19.3%", "Raw Count": 300},
-            {"Pitch Type": "Curveball", "Frequency": "6.7%", "Raw Count": 104},
-            {"Pitch Type": "Slider", "Frequency": "1.7%", "Raw Count": 27},
-            {"Pitch Type": "Other (PO)", "Frequency": "0.1%", "Raw Count": 1},
-        ])
 
-    raw_counts = pitcher_data["pitch_type"].value_counts()
-    total = len(pitcher_data)
+# ============================================================
+# BATTER STATCAST PROFILE
+# ============================================================
 
-    rows = []
-    for code, count in raw_counts.items():
-        name = PITCH_CODE_MAP.get(code, f"Other ({code})")
-        pct = (count / total) * 100
-        rows.append({
-            "Pitch Type": name,
-            "Frequency": f"{pct:.1f}%",
-            "Raw Count": count
-        })
+def get_batter_statcast(batter_id):
+    df = _safe_statcast_pull(statcast_batter, batter_id)
 
-    return pd.DataFrame(rows)
+    profile = {}
+
+    if df.empty:
+        # Safe fallback profile
+        return {
+            "Brl %": 0,
+            "HH %": 0,
+            "PullAir %": 0,
+            "LD %": 0,
+            "GB %": 0,
+            "Whiff %": 0,
+            "BBE": 0
+        }
+
+    # -----------------------------
+    # Core Statcast Metrics
+    # -----------------------------
+    profile["Brl %"] = round(df.get("barrel", pd.Series([0])).mean() * 100, 2)
+    profile["HH %"] = round(df.get("hard_hit", pd.Series([0])).mean() * 100, 2)
+    profile["PullAir %"] = round(df.get("pull_air", pd.Series([0])).mean() * 100, 2)
+    profile["LD %"] = round(df.get("ld", pd.Series([0])).mean() * 100, 2)
+    profile["GB %"] = round(df.get("gb", pd.Series([0])).mean() * 100, 2)
+
+    # -----------------------------
+    # Whiff % (Swinging Strikes)
+    # -----------------------------
+    if "description" in df.columns:
+        whiff = (df["description"].str.contains("swinging_strike")).mean() * 100
+    else:
+        whiff = 0
+
+    profile["Whiff %"] = round(whiff, 2)
+
+    # -----------------------------
+    # Sample Size
+    # -----------------------------
+    profile["BBE"] = len(df)
+
+    return profile
+
+
+# ============================================================
+# PITCHER STATCAST PROFILE
+# ============================================================
+
+def get_pitcher_statcast(pitcher_id):
+    df = _safe_statcast_pull(statcast_pitcher, pitcher_id)
+
+    profile = {}
+
+    if df.empty:
+        return {
+            "HR/BBE": 0,
+            "HH %": 0,
+            "LD %": 0,
+            "Brl %": 0,
+            "ZoneContact %": 0,
+            "Whiff %": 0,
+            "Pitch Arsenal": {},
+            "BBE": 0
+        }
+
+    # -----------------------------
+    # Core Pitcher Metrics
+    # -----------------------------
+    profile["HR/BBE"] = round(df.get("hr", pd.Series([0])).mean(), 3)
+    profile["HH %"] = round(df.get("hard_hit", pd.Series([0])).mean() * 100, 2)
+    profile["LD %"] = round(df.get("ld", pd.Series([0])).mean() * 100, 2)
+    profile["Brl %"] = round(df.get("barrel", pd.Series([0])).mean() * 100, 2)
+    profile["ZoneContact %"] = round(df.get("zone_contact", pd.Series([0])).mean() * 100, 2)
+
+    # -----------------------------
+    # Whiff % (Swinging Strikes)
+    # -----------------------------
+    if "description" in df.columns:
+        whiff = (df["description"].str.contains("swinging_strike")).mean() * 100
+    else:
+        whiff = 0
+
+    profile["Whiff %"] = round(whiff, 2)
+
+    # -----------------------------
+    # Pitch Arsenal (safe)
+    # -----------------------------
+    if "pitch_type" in df.columns:
+        arsenal = df["pitch_type"].value_counts(normalize=True) * 100
+        profile["Pitch Arsenal"] = {k: round(v, 2) for k, v in arsenal.items()}
+    else:
+        profile["Pitch Arsenal"] = {}
+
+    # -----------------------------
+    # Sample Size
+    # -----------------------------
+    profile["BBE"] = len(df)
+
+    return profile
