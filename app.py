@@ -1,6 +1,13 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import sys
+import os
+
+# Ensure project root is in Python path
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
 
 # SAFE STREAMLIT IMPORTS FOR ENGINES
 import engines.danger_zone as dz
@@ -15,6 +22,7 @@ import engines.roster as roster
 
 # THEME
 from styles.kc_theme import inject_kc_theme
+
 
 
 # ---------------------------------------------------------
