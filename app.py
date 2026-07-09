@@ -22,20 +22,20 @@ if STYLES_DIR not in sys.path:
 # ---------------------------------------------------------
 # SAFE STREAMLIT IMPORTS FOR ENGINES
 # ---------------------------------------------------------
-import engines.danger_zone as dz
-import engines.pitcher_danger_zone as pdz
-import engines.slam_engine as slam
-import engines.bvp_engine as bvp
-import engines.matchup_engine as matchup
-import engines.pitch_affinity_engine as affinity
-import engines.batter_stats as batter
-import engines.statcast_engine as statcast
-import engines.roster as roster
+import danger_zone as dz
+import pitcher_danger_zone as pdz
+import slam_engine as slam
+import bvp_engine as bvp
+import matchup_engine as matchup
+import pitch_affinity_engine as affinity
+import batter_stats as batter
+import statcast_engine as statcast
+import roster as roster
 
 # ---------------------------------------------------------
 # THEME
 # ---------------------------------------------------------
-from styles.kc_theme import inject_kc_theme
+from kc_theme import inject_kc_theme
 
 # ---------------------------------------------------------
 # PAGE CONFIG
