@@ -1,179 +1,194 @@
 import streamlit as st
-import requests
 import pandas as pd
-from datetime import datetime
 
-# --- ENGINE IMPORTS ---
-from engines.roster import get_live_team_roster
+# --- KC THEME ---
+from styles.kc_theme import inject_kc_theme
+inject_kc_theme()
+
+# --- ENGINES ---
 from engines.statcast_engine import (
     get_pitcher_id,
     get_pitcher_statcast,
     build_pitch_arsenal
 )
+
 from engines.batter_stats import (
     load_batting_stats,
     get_batter_profile
 )
-from engines.slam_engine import (
-    compute_slam_index,
-    random_match_tag
+
+from engines.matchup_engine import compute_matchup_multiplier
+from engines.pitch_affinity_engine import compute_pitch_affinity_multiplier
+from engines.slam_engine import compute_slam_index
+
+from engines.danger_zone import build_danger_zone
+from engines.pitcher_danger_zone import build_pitcher_danger_zone
+
+from engines.roster import get_live_team_roster
+
+
+# ---------------------------------------------------------
+# PAGE CONFIG
+# ---------------------------------------------------------
+st.set_page_config(
+    layout="wide",
+    page_title="Los Cappers Lab — KC Home Hub",
+    page_icon="🧪"
 )
 
-# --- 1. SET LAYOUT CONFIGURATION ---
-st.set_page_config(layout="wide", page_title="Los Cappers Lab", page_icon="🧪")
-
-st.title("Los Cappers Lab 🧪")
-st.markdown("### 💥 The Advanced S.L.A.M. Index Analytics Hub")
+# ---------------------------------------------------------
+# HEADER
+# ---------------------------------------------------------
+st.markdown('<div class="main-header">LOS CAPPERS LAB</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">The Advanced S.L.A.M. Index Analytics Hub</div>', unsafe_allow_html=True)
 st.markdown("---")
 
-if "selected_batter" not in st.session_state:
-    st.session_state.selected_batter = None
 
-# --- 2. GET TODAY'S GAMES ---
-@st.cache_data(ttl=3600)
-def get_todays_games():
-    today = datetime.today().strftime("%Y-%m-%d")
-    url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&date={today}&hydrate=probablePitcher"
+# ---------------------------------------------------------
+# INPUTS — PITCHER + TEAM
+# ---------------------------------------------------------
+colA, colB = st.columns(2)
 
-    try:
-        response = requests.get(url).json()
-        games_list = response.get("dates", [{}])[0].get("games", [])
-        matchups = []
+with colA:
+    pitcher_name = st.text_input("🎯 Enter Pitcher Name:", "")
 
-        for g in games_list:
-            away_team = g["teams"]["away"]["team"]["name"]
-            home_team = g["teams"]["home"]["team"]["name"]
-            away_p = g["teams"]["away"].get("probablePitcher", {}).get("fullName", "TBD")
-            home_p = g["teams"]["home"].get("probablePitcher", {}).get("fullName", "TBD")
+with colB:
+    team_name = st.text_input("⚔️ Enter Opposing Team:", "")
 
-            matchups.append({
-                "game_id": g["gamePk"],
-                "away": away_team,
-                "home": home_team,
-                "away_pitcher": away_p,
-                "home_pitcher": home_p,
-            })
 
-        return matchups
+if pitcher_name and team_name:
 
-    except Exception:
-        return []
+    # ---------------------------------------------------------
+    # PITCHER PROFILE + ARSENAL
+    # ---------------------------------------------------------
+    st.markdown("## 📋 Pitcher Pro-Report")
 
-games = get_todays_games()
+    pitcher_id = get_pitcher_id(pitcher_name)
+    pitcher_data = get_pitcher_statcast(pitcher_id)
 
-# --- 3. SIDEBAR MATCHUP SELECTOR ---
-if games:
-    with st.sidebar:
-        st.markdown("## 📅 Matchup Slate")
-        game_options = [f"{g['away']} @ {g['home']}" for g in games]
+    arsenal_df = build_pitch_arsenal(pitcher_data)
+    st.markdown("### 🎯 Verified Pitch Arsenal Distribution")
+    st.dataframe(arsenal_df, use_container_width=True)
 
-        selected_idx = st.selectbox(
-            "Select Today's Matchup:",
-            range(len(game_options)),
-            format_func=lambda x: game_options[x],
+    # Pitcher danger zone
+    pitcher_profile = {
+        "HR/BBE": pitcher_data.get("hr_rate", 0),
+        "HH %": pitcher_data.get("hard_hit_rate", 0),
+        "LD %": pitcher_data.get("line_drive_rate", 0),
+        "Brl %": pitcher_data.get("barrel_rate", 0),
+        "ZoneContact %": pitcher_data.get("zone_contact", 0)
+    }
+
+    pdz = build_pitcher_danger_zone(pitcher_profile)
+    pdz_reset = pdz.reset_index().melt(id_vars="index")
+    pdz_reset.columns = ["Vertical", "Horizontal", "Danger"]
+
+    st.markdown("### 🔥 Pitcher Danger Zone Heatmap")
+    st.altair_chart(
+        alt.Chart(pdz_reset)
+        .mark_rect()
+        .encode(
+            x="Horizontal:N",
+            y="Vertical:N",
+            color=alt.Color("Danger:Q", scale=alt.Scale(scheme="reds")),
+            tooltip=["Vertical", "Horizontal", "Danger"]
         )
-
-        chosen_game = games[selected_idx]
-
-        st.markdown("---")
-
-        pitcher = st.radio(
-            "Select Pitcher to Target:",
-            [chosen_game["away_pitcher"], chosen_game["home_pitcher"]],
-        )
-
-    opposing_team = (
-        chosen_game["home"]
-        if pitcher == chosen_game["away_pitcher"]
-        else chosen_game["away"]
+        .properties(width=300, height=300),
+        use_container_width=False
     )
 
-    # --- 4. PITCHER REPORT ---
-    if pitcher and pitcher != "TBD":
-        st.write(f"## 📋 Pro-Report: {pitcher}")
+    # ---------------------------------------------------------
+    # LINEUP ANALYSIS
+    # ---------------------------------------------------------
+    st.markdown(f"## ⚔️ Intent-To-Homer Lineup Analysis vs. {team_name}")
 
-        pitcher_id = get_pitcher_id(pitcher)
-        pitcher_data = get_pitcher_statcast(pitcher_id)
+    live_batters = get_live_team_roster(team_name)
+    stats_df = load_batting_stats()
 
-        # --- PITCH ARSENAL ---
-        st.markdown("### 🎯 Verified Pitch Arsenal Distribution")
-        arsenal_df = build_pitch_arsenal(pitcher_data)
-        st.table(arsenal_df)
+    processed_rows = []
 
-        # --- 5. BATTER LINEUP ANALYSIS ---
-        st.markdown(f"### ⚔️ Intent-To-Homer Lineup Analysis vs. {opposing_team}")
-        st.caption(
-            "🌲 Emerald Glow = High Volume Verified Power + Covers Arsenal Options | "
-            "🪐 Matte Grey = Small Sample Size"
+    for b in live_batters:
+        prof = get_batter_profile(b["name"], stats_df)
+
+        # matchup engine
+        matchup_mult, matchup_tag = compute_matchup_multiplier(prof, pitcher_profile)
+
+        # pitch affinity engine
+        pitch_affinity_mult = compute_pitch_affinity_multiplier(prof, arsenal_df)
+
+        # SLAM
+        slam = compute_slam_index(
+            brl=prof["Brl %"],
+            hh=prof["HH %"],
+            pull_air=prof["PullAir %"],
+            ld=prof["LD %"],
+            gb=prof["GB %"],
+            bbe=prof["BBE"],
+            matchup_mult=matchup_mult,
+            pitch_affinity_mult=pitch_affinity_mult
         )
 
-        live_batters = get_live_team_roster(opposing_team)
-        real_stats_df = load_batting_stats()
+        processed_rows.append({
+            "Batter": b["name"],
+            "Hand": b["hand"],
+            "BBE": prof["BBE"],
+            "SLAM": round(slam, 1),
+            "Matchup": matchup_tag,
+            "Brl %": prof["Brl %"],
+            "HH %": prof["HH %"],
+            "PullAir %": prof["PullAir %"],
+            "LD %": prof["LD %"],
+            "GB %": prof["GB %"],
+        })
 
-        processed_rows = []
+    df = pd.DataFrame(processed_rows).set_index("Batter")
 
-        for b in live_batters:
-            prof = get_batter_profile(b["name"], real_stats_df)
-            match_tag = random_match_tag(b["name"])
+    st.dataframe(df, use_container_width=True)
 
-            slam_index = compute_slam_index(
-                brl=prof["Brl %"],
-                hh=prof["HH %"],
-                pull_air=prof["PullAir %"],
-                gb=prof["GB %"],
-                bbe=prof["BBE"],
-                matchup_tag=match_tag,
-                affinity_mult=1.0,
+    # ---------------------------------------------------------
+    # SCOUT CARD
+    # ---------------------------------------------------------
+    st.markdown("### 🔍 KC Scout Card")
+
+    selected = st.selectbox("Select Batter:", ["--"] + list(df.index))
+
+    if selected != "--":
+        sb = df.loc[selected]
+
+        st.markdown(f"## 📊 {selected} — Full KC Breakdown")
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("SLAM Index", sb["SLAM"])
+        c2.metric("Barrel %", f"{sb['Brl %']}%")
+        c3.metric("Hard Hit %", f"{sb['HH %']}%")
+        c4.metric("BBE Sample", sb["BBE"])
+
+        st.markdown("### 🔋 Power Profile")
+        st.write(f"- PullAir %: {sb['PullAir %']}%")
+        st.write(f"- Line Drive %: {sb['LD %']}%")
+        st.write(f"- Groundball %: {sb['GB %']}%")
+
+        st.markdown("### ⚔️ Matchup Tag")
+        st.write(f"**{sb['Matchup']}**")
+
+        # Batter danger zone
+        dz = build_danger_zone(sb)
+        dz_reset = dz.reset_index().melt(id_vars="index")
+        dz_reset.columns = ["Vertical", "Horizontal", "Danger"]
+
+        st.markdown("### 🔥 Batter Danger Zone Heatmap")
+        st.altair_chart(
+            alt.Chart(dz_reset)
+            .mark_rect()
+            .encode(
+                x="Horizontal:N",
+                y="Vertical:N",
+                color=alt.Color("Danger:Q", scale=alt.Scale(scheme="purples")),
+                tooltip=["Vertical", "Horizontal", "Danger"]
             )
-
-            processed_rows.append({
-                "Batter Name": b["name"],
-                "Hand": b["hand"],
-                "BBE": prof["BBE"],
-                "💥 SLAM Index": round(slam_index, 1),
-                "Top 3 Matchup": match_tag,
-                "Brl %": prof["Brl %"],
-                "PullAir %": prof["PullAir %"],
-                "HH %": prof["HH %"],
-                "LD %": prof["LD %"],
-                "GB %": prof["GB %"],
-            })
-
-        if processed_rows:
-            df_lineup = pd.DataFrame(processed_rows).set_index("Batter Name")
-
-            selected_scout = st.selectbox(
-                "🔍 Click to inspect detailed historical performance breakdown:",
-                ["-- Active Lineup Roster Overview --"] + list(df_lineup.index),
-            )
-
-            if selected_scout != "-- Active Lineup Roster Overview --":
-                st.session_state.selected_batter = selected_scout
-            else:
-                st.session_state.selected_batter = None
-
-            if st.session_state.selected_batter:
-                sb = st.session_state.selected_batter
-                if sb in df_lineup.index:
-                    stats = df_lineup.loc[sb]
-                    st.markdown(f"#### 📊 Detailed Scout Matrix: {sb}")
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Calculated SLAM Rating", f"{stats['💥 SLAM Index']}")
-                    c2.metric("Barrel Execution Rate", f"{stats['Brl %']}%")
-                    c3.metric("Hard Hit Metric", f"{stats['HH %']}%")
-                    c4.metric("Total BBE Sample Size", f"{stats['BBE']}")
-                    st.markdown("---")
-
-            styled_df = df_lineup.style.format({
-                "BBE": "{:d}",
-                "💥 SLAM Index": "{:.1f}",
-                "Brl %": "{:.1f}%",
-                "PullAir %": "{:.1f}%",
-                "HH %": "{:.1f}%",
-                "LD %": "{:.1f}%",
-                "GB %": "{:.1f}%",
-            })
-            st.dataframe(styled_df, use_container_width=True)
+            .properties(width=300, height=300),
+            use_container_width=False
+        )
 
 else:
-    st.info("Awaiting live MLB schedule initialization data streams.")
+    st.info("Enter a pitcher and team to begin KC analysis.")
