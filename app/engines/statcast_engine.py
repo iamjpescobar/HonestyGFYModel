@@ -1,11 +1,3 @@
-import sys
-import os
-
-# Ensure project root is in Python path
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-if ROOT_DIR not in sys.path:
-    sys.path.append(ROOT_DIR)
-
 import streamlit as st
 import pandas as pd
 from pybaseball import statcast_pitcher, playerid_lookup
@@ -78,4 +70,3 @@ def build_pitch_arsenal(pitcher_data: pd.DataFrame):
         })
 
     return pd.DataFrame(rows)
-

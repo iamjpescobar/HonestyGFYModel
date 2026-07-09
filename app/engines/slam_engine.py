@@ -1,11 +1,3 @@
-import sys
-import os
-
-# Ensure project root is in Python path
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-if ROOT_DIR not in sys.path:
-    sys.path.append(ROOT_DIR)
-
 import numpy as np
 
 def compute_slam_index(
@@ -25,12 +17,12 @@ def compute_slam_index(
     - Weighted by predictive strength
     """
 
-    # Core weights (you can tune, but these are sane starting points)
-    w_brl = 3.8    # Barrel % — strongest HR predictor
-    w_hh = 0.55    # Hard Hit %
+    # Core weights (based on predictive strength)
+    w_brl = 3.8      # Barrel % — strongest HR predictor
+    w_hh = 0.55      # Hard Hit %
     w_pull_air = 0.32  # Pull-side Air %
-    w_ld = 0.28   # Line Drive %
-    w_gb = -0.22  # Groundball % — negative for HR
+    w_ld = 0.28     # Line Drive %
+    w_gb = -0.22    # Groundball % — negative for HR
 
     base = (
         (brl * w_brl) +

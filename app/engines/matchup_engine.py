@@ -1,11 +1,3 @@
-import sys
-import os
-
-# Ensure project root is in Python path
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-if ROOT_DIR not in sys.path:
-    sys.path.append(ROOT_DIR)
-
 import numpy as np
 
 def compute_matchup_multiplier(batter_profile: dict, pitcher_profile: dict):
@@ -23,7 +15,7 @@ def compute_matchup_multiplier(batter_profile: dict, pitcher_profile: dict):
     pull_air = batter_profile["PullAir %"]
     ld = batter_profile["LD %"]
 
-    # Pitcher weaknesses (you must feed real values here)
+    # Pitcher weaknesses
     hr_bbe = pitcher_profile["HR/BBE"]
     hh_allowed = pitcher_profile["HH Allowed %"]
     ld_allowed = pitcher_profile["LD Allowed %"]
