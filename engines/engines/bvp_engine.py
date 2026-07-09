@@ -1,11 +1,12 @@
 import pandas as pd
 import baseball_scraper as bs
 
-def get_bvp_history(pitcher_name: str, batter_name: str):
+def get_bvp_history(pitcher_name: str, batter_name: str) -> pd.DataFrame:
     """
-    Returns batter vs pitcher history.
-    Replace backend with your own DB/Statcast for full control.
+    Batter vs Pitcher history.
+    Replace backend with your own DB/Statcast when ready.
     """
+
     try:
         df = bs.bvp(pitcher_name, batter_name)
 
