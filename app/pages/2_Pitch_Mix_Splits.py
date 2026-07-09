@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 
-from app.engines.statcast_engine import (
+from engines.statcast_engine import (
     get_pitcher_id,
     get_pitcher_statcast
 )
