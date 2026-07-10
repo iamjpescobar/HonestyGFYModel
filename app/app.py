@@ -10,7 +10,7 @@ from engines.pitcher_danger_zone import build_pitcher_danger_zone
 from engines.slam_engine import compute_slam_index
 from engines.pitch_affinity_engine import compute_pitch_affinity_multiplier
 from engines.matchup_engine import compute_matchup_multiplier
-from engines.roster import get_all_teams, get_live_team_roster
+from engines.roster import get_all_teams, get_pitchers, get_position_players
 from engines.statcast_engine import (
     get_pitcher_id,
     get_pitcher_statcast,
@@ -22,7 +22,7 @@ from engines.batter_stats import load_batting_stats, get_batter_profile
 # ---------------------------------------------------------
 # THEME IMPORT
 # ---------------------------------------------------------
-from styles.kc_theme import inject_kc_theme, badge, card_open, card_close
+from styles.kc_theme import inject_kc_theme, badge, card_open, card_close, status_banner
 from styles.table_style import style_stat_table
 
 # ---------------------------------------------------------
@@ -37,43 +37,61 @@ st.set_page_config(
 inject_kc_theme()
 
 # ---------------------------------------------------------
-# SIDEBAR — TEAM + PLAYER SELECTOR
+# SIDEBAR — SEPARATE BATTER + OPPOSING PITCHER SELECTION
 # ---------------------------------------------------------
-st.sidebar.header("Team & Player Selection")
-
-# Step 1 — Choose Team
 teams = get_all_teams()
-selected_team = st.sidebar.selectbox("Choose a Team", teams)
 
-# Step 2 — Pull Team Roster
-team_roster = get_live_team_roster(selected_team)
-player_list = [p["name"] for p in team_roster]
+st.sidebar.header("Batter Selection")
+batting_team = st.sidebar.selectbox("Batter's Team", teams, key="batting_team")
+batters = get_position_players(batting_team)
+if not batters:
+    st.sidebar.warning(f"No position players found for {batting_team} — roster data may not have loaded.")
+selected_batter = st.sidebar.selectbox(
+    "Choose a Batter", [p["name"] for p in batters], key="batter_select"
+)
 
-# Step 3 — Choose Player
-selected_player = st.sidebar.selectbox("Choose a Player", player_list)
+st.sidebar.header("Opposing Pitcher Selection")
+pitching_team = st.sidebar.selectbox("Pitcher's Team", teams, key="pitching_team")
+pitchers = get_pitchers(pitching_team)
+if not pitchers:
+    st.sidebar.warning(f"No pitchers found for {pitching_team} — roster data may not have loaded.")
+selected_pitcher = st.sidebar.selectbox(
+    "Choose Opposing Pitcher", [p["name"] for p in pitchers], key="pitcher_select"
+)
 
 # ---------------------------------------------------------
 # LOAD BATTER STATS + BUILD BATTER PROFILE
 # ---------------------------------------------------------
 stats_df, stats_load_error = load_batting_stats()
-batter_profile = get_batter_profile(selected_player, stats_df, stats_load_error)
+batter_profile = get_batter_profile(selected_batter, stats_df, stats_load_error)
 
 if batter_profile.get("_error"):
-    st.error(f"⚠️ Batter data did not load: {batter_profile['_error']}")
-elif batter_profile.get("_source"):
-    st.caption(f"Batter data source: {batter_profile['_source']}")
+    status_banner(
+        "error",
+        f"Live batter stats aren't available for {selected_batter} right now.",
+        details=batter_profile["_error"]
+    )
+elif batter_profile.get("_source") == "Statcast (FanGraphs unavailable)":
+    status_banner("info", f"Using backup data source (Statcast) for {selected_batter} — FanGraphs is temporarily unreachable.")
 
 # ---------------------------------------------------------
 # BUILD PITCHER PROFILE (STATCAST + ARSENAL)
 # ---------------------------------------------------------
-pitcher_id = get_pitcher_id(selected_player)
+pitcher_id = get_pitcher_id(selected_pitcher)
 pitcher_data = get_pitcher_statcast(pitcher_id)
 pitcher_arsenal = build_pitch_arsenal(pitcher_data)
 
 if pitcher_data.get("_error"):
-    st.error(f"⚠️ Pitcher data did not load: {pitcher_data['_error']}")
+    status_banner(
+        "error",
+        f"Live pitching stats aren't available for {selected_pitcher} right now.",
+        details=pitcher_data["_error"]
+    )
 elif pitcher_data.get("BBE", 0) == 0:
-    st.warning(f"⚠️ No batted-ball events found for '{selected_player}' in this date range — stats below will show as 0, not because the pitcher is unhittable, but because there's no real data to compute from yet.")
+    status_banner(
+        "warning",
+        f"No batted-ball data found yet for {selected_pitcher} this season — stats below will show as 0 because there's nothing to calculate from, not because they're unhittable."
+    )
 
 pitcher_profile = {
     **pitcher_data,
@@ -134,7 +152,7 @@ st.markdown(card_close(), unsafe_allow_html=True)
 # BVP ENGINE
 # ---------------------------------------------------------
 st.markdown(card_open("BVP History"), unsafe_allow_html=True)
-bvp_history = get_bvp_history(selected_player, selected_player)
+bvp_history = get_bvp_history(selected_pitcher, selected_batter)
 st.dataframe(bvp_history, width='stretch')
 st.markdown(card_close(), unsafe_allow_html=True)
 

@@ -150,13 +150,74 @@ def inject_kc_theme():
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
+
+        /* ---------------- STATUS BANNERS (replaces default st.error/warning boxes) ---------------- */
+        .pf-status {
+            border-radius: 12px;
+            padding: 14px 18px;
+            margin-bottom: 14px;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        .pf-status-icon { font-size: 16px; line-height: 1.4; }
+        .pf-status-error {
+            background: rgba(139, 0, 0, 0.14);
+            border: 1px solid rgba(139, 0, 0, 0.4);
+            color: #f5b8b8;
+        }
+        .pf-status-warning {
+            background: rgba(161, 122, 24, 0.14);
+            border: 1px solid rgba(161, 122, 24, 0.4);
+            color: #e8c766;
+        }
+        .pf-status-info {
+            background: rgba(148, 163, 184, 0.10);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            color: #cbd5e1;
+        }
+
+        /* Also restyle Streamlit's native alert boxes for anything not yet converted */
+        div[data-testid="stAlert"] {
+            background: #131318 !important;
+            border: 1px solid #232329 !important;
+            border-radius: 12px !important;
+            color: #e8e8ec !important;
+        }
+        div[data-testid="stExpander"] {
+            background: #131318;
+            border: 1px solid #232329;
+            border-radius: 12px;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
-def badge(text: str, style: str = "neutral") -> str:
+def status_banner(kind: str, message: str, details: str = None):
+    """
+    Renders a clean, dark-themed status banner instead of Streamlit's
+    default bright st.error/st.warning boxes.
+    kind: 'error', 'warning', or 'info'
+    message: short, plain-language summary a non-technical user can read
+    details: optional raw technical detail (exception text etc.), shown
+             only inside a collapsed expander so it doesn't clutter the UI
+    """
+    import streamlit as st
+
+    icon = {"error": "⚠️", "warning": "⚠️", "info": "ℹ️"}.get(kind, "ℹ️")
+    st.markdown(
+        f'<div class="pf-status pf-status-{kind}">'
+        f'<span class="pf-status-icon">{icon}</span><span>{message}</span>'
+        f'</div>',
+        unsafe_allow_html=True
+    )
+    if details:
+        with st.expander("Technical details"):
+            st.code(details, language=None)
     """
     Returns an HTML pill/badge string, e.g. badge("vs RHB 0.83", "bad").
     style options: 'accent' (blood red), 'good' (gold), 'bad' (dark blue), 'neutral'
