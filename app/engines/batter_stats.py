@@ -28,43 +28,50 @@ def load_batting_stats():
     except Exception:
         return pd.DataFrame()
 
+def _pct(value) -> float:
+    """
+    Normalizes a percentage value regardless of whether the source
+    returned it as a fraction (0.085) or a whole percent (8.5).
+    Real batted-ball percentages are never legitimately <= 1.5 as a
+    whole percent, so that threshold safely distinguishes the two formats.
+    """
+    v = float(value)
+    return round(v * 100, 2) if v <= 1.5 else round(v, 2)
+
+
 def get_batter_profile(name: str, stats_df: pd.DataFrame):
     """
-    Returns a batter's stat profile.
-    If no real stats exist, generates a realistic fallback profile.
+    Returns a batter's real stat profile from FanGraphs (via pybaseball).
+    Never fabricates data. If no match is found, returns a profile with
+    "_error" set so the UI can show an honest "no data" state instead of
+    silently displaying fake numbers.
     """
     clean = name.lower().replace(".", "").replace(",", "").replace("'", "")
 
-    # Try to match real stats
-    if not stats_df.empty:
-        match = stats_df[stats_df["Name_Clean"] == clean]
-    else:
-        match = pd.DataFrame()
+    if stats_df.empty:
+        return {
+            "BBE": 0, "Brl %": 0.0, "HH %": 0.0, "GB %": 0.0,
+            "LD %": 0.0, "PullAir %": 0.0,
+            "_error": "Batting stats failed to load from FanGraphs — check your connection or try refreshing."
+        }
 
-    if not match.empty:
-        row = match.iloc[0]
-        bbe = int(row.get("AB", 80))
-        brl = float(row.get("Barrel%", 8.5))
-        hh = float(row.get("HardHit%", 40.0))
-        gb = float(row.get("GB%", 42.0))
-        ld = float(row.get("LD%", 20.0))
-        pull_air = float(row.get("FB%", 35.0))
-    else:
-        # Fallback random profile (seeded for consistency)
-        np.random.seed(abs(hash(name)) % (10**8))
-        bbe = int(np.random.uniform(30, 240))
-        brl = round(np.random.uniform(4.0, 14.0), 1)
-        hh = round(np.random.uniform(25.0, 50.0), 1)
-        gb = round(np.random.uniform(35.0, 48.0), 1)
-        ld = round(np.random.uniform(15.0, 25.0), 1)
-        pull_air = round(np.random.uniform(10.0, 25.0), 1)
+    match = stats_df[stats_df["Name_Clean"] == clean]
 
+    if match.empty:
+        return {
+            "BBE": 0, "Brl %": 0.0, "HH %": 0.0, "GB %": 0.0,
+            "LD %": 0.0, "PullAir %": 0.0,
+            "_error": f"No matching FanGraphs stats found for '{name}'. They may not meet the minimum plate-appearance threshold yet, or the name format doesn't match FanGraphs' listing."
+        }
+
+    row = match.iloc[0]
     return {
-        "BBE": bbe,
-        "Brl %": brl,
-        "HH %": hh,
-        "GB %": gb,
-        "LD %": ld,
-        "PullAir %": pull_air,
+        "BBE": int(row.get("AB", 0)),
+        "Brl %": _pct(row.get("Barrel%", 0.0)),
+        "HH %": _pct(row.get("HardHit%", 0.0)),
+        "GB %": _pct(row.get("GB%", 0.0)),
+        "LD %": _pct(row.get("LD%", 0.0)),
+        "PullAir %": _pct(row.get("FB%", 0.0)),
+        "_error": None
     }
 

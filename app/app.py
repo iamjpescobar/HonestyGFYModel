@@ -58,12 +58,20 @@ selected_player = st.sidebar.selectbox("Choose a Player", player_list)
 stats_df = load_batting_stats()
 batter_profile = get_batter_profile(selected_player, stats_df)
 
+if batter_profile.get("_error"):
+    st.error(f"⚠️ Batter data did not load: {batter_profile['_error']}")
+
 # ---------------------------------------------------------
 # BUILD PITCHER PROFILE (STATCAST + ARSENAL)
 # ---------------------------------------------------------
 pitcher_id = get_pitcher_id(selected_player)
 pitcher_data = get_pitcher_statcast(pitcher_id)
 pitcher_arsenal = build_pitch_arsenal(pitcher_data)
+
+if pitcher_data.get("_error"):
+    st.error(f"⚠️ Pitcher data did not load: {pitcher_data['_error']}")
+elif pitcher_data.get("BBE", 0) == 0:
+    st.warning(f"⚠️ No batted-ball events found for '{selected_player}' in this date range — stats below will show as 0, not because the pitcher is unhittable, but because there's no real data to compute from yet.")
 
 pitcher_profile = {
     **pitcher_data,

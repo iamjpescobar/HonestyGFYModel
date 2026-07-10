@@ -1,26 +1,40 @@
 import pandas as pd
+import numpy as np
+from datetime import date
 from pybaseball import statcast_batter, statcast_pitcher, playerid_lookup
 
 DEFAULT_START_DATE = "2026-03-01"
-DEFAULT_END_DATE = "2026-11-01"
+
+
+def _today_str():
+    return date.today().strftime("%Y-%m-%d")
 
 
 # ============================================================
-# SAFE STATCAST ENGINE (BATTER + PITCHER IN ONE FILE)
+# SAFE STATCAST PULL — surfaces real errors instead of hiding them
 # ============================================================
 
-def _safe_statcast_pull(func, player_id, start_date=DEFAULT_START_DATE, end_date=DEFAULT_END_DATE):
+def _safe_statcast_pull(func, player_id, start_date=DEFAULT_START_DATE, end_date=None):
     """
-    Safest possible Statcast pull wrapper.
-    Prevents crashes, returns empty DataFrame if needed.
+    Pulls real Statcast data for a player.
+    Returns (df, error_message). error_message is None on success —
+    including when a player legitimately has zero rows (e.g. hasn't
+    played yet this season) — so callers can tell "no data available"
+    apart from "the pull actually failed."
     """
+    if end_date is None:
+        end_date = _today_str()
+
+    if player_id is None:
+        return pd.DataFrame(), "No player ID could be resolved for this name — check spelling or that pybaseball's lookup table has them."
+
     try:
         df = func(start_date, end_date, player_id)
-        if df is None or len(df) == 0:
-            return pd.DataFrame()
-        return df
-    except Exception:
-        return pd.DataFrame()
+        if df is None:
+            return pd.DataFrame(), "Statcast returned no response for this player/date range."
+        return df, None
+    except Exception as e:
+        return pd.DataFrame(), f"Statcast pull failed: {e}"
 
 
 def get_pitcher_id(full_name: str):
@@ -43,7 +57,6 @@ def get_pitcher_id(full_name: str):
         matches = playerid_lookup(last_name, first_name)
         if matches is None or matches.empty:
             return None
-        # Most recent player if multiple people share the name
         matches = matches.sort_values("mlb_played_last", ascending=False)
         return int(matches.iloc[0]["key_mlbam"])
     except Exception:
@@ -71,51 +84,92 @@ def build_pitch_arsenal(pitcher_data: dict) -> pd.DataFrame:
 
 
 # ============================================================
+# REAL STATCAST COLUMN DERIVATIONS
+# (raw pybaseball/Statcast output has NO "barrel"/"hard_hit"/"ld"/"gb"
+#  boolean columns — these must be derived from launch_speed,
+#  launch_angle, bb_type, hc_x/hc_y, zone, description, events)
+# ============================================================
+
+def _spray_angle(hc_x, hc_y):
+    """Standard horizontal spray-angle formula (degrees) from Statcast hit coordinates."""
+    return np.degrees(np.arctan2((hc_x - 125.42), (198.27 - hc_y)))
+
+
+def _compute_batted_ball_metrics(df: pd.DataFrame):
+    """Derives Barrel %, Hard Hit %, LD/GB/FB %, and PullAir % from batted-ball rows only."""
+    if df.empty or "type" not in df.columns:
+        return {"Brl %": 0.0, "HH %": 0.0, "LD %": 0.0, "GB %": 0.0, "PullAir %": 0.0, "BBE": 0}
+
+    bbe_df = df[df["type"] == "X"].copy()
+    bbe_count = len(bbe_df)
+    if bbe_count == 0:
+        return {"Brl %": 0.0, "HH %": 0.0, "LD %": 0.0, "GB %": 0.0, "PullAir %": 0.0, "BBE": 0}
+
+    ls = pd.to_numeric(bbe_df.get("launch_speed"), errors="coerce")
+    la = pd.to_numeric(bbe_df.get("launch_angle"), errors="coerce")
+
+    hh = (ls >= 95).sum()
+
+    if "launch_speed_angle" in bbe_df.columns:
+        barrels = (bbe_df["launch_speed_angle"] == 6).sum()
+    else:
+        # Approximation if Statcast's own barrel bucket isn't present
+        barrels = ((ls >= 98) & (la >= 26) & (la <= 30)).sum()
+
+    bb_type = bbe_df.get("bb_type", pd.Series(dtype=str))
+    ld = (bb_type == "line_drive").sum()
+    gb = (bb_type == "ground_ball").sum()
+    fb = (bb_type == "fly_ball").sum()
+
+    pull_air = 0
+    if {"hc_x", "hc_y", "stand"}.issubset(bbe_df.columns):
+        angle = _spray_angle(pd.to_numeric(bbe_df["hc_x"], errors="coerce"),
+                              pd.to_numeric(bbe_df["hc_y"], errors="coerce"))
+        is_fb = bb_type == "fly_ball"
+        pulled_rhh = (bbe_df["stand"] == "R") & (angle < 0)
+        pulled_lhh = (bbe_df["stand"] == "L") & (angle > 0)
+        pull_air = (is_fb & (pulled_rhh | pulled_lhh)).sum()
+
+    return {
+        "Brl %": round(barrels / bbe_count * 100, 2),
+        "HH %": round(hh / bbe_count * 100, 2),
+        "LD %": round(ld / bbe_count * 100, 2),
+        "GB %": round(gb / bbe_count * 100, 2),
+        "PullAir %": round(pull_air / bbe_count * 100, 2),
+        "BBE": bbe_count
+    }
+
+
+def _compute_whiff_pct(df: pd.DataFrame) -> float:
+    if df.empty or "description" not in df.columns:
+        return 0.0
+    return round((df["description"] == "swinging_strike").mean() * 100, 2)
+
+
+def _compute_zone_contact_pct(df: pd.DataFrame) -> float:
+    if df.empty or "zone" not in df.columns or "description" not in df.columns:
+        return 0.0
+    in_zone = pd.to_numeric(df["zone"], errors="coerce").between(1, 9)
+    contact_desc = ["hit_into_play", "foul", "foul_tip"]
+    swing_desc = contact_desc + ["swinging_strike"]
+    swings_in_zone = df["description"].isin(swing_desc) & in_zone
+    contact_in_zone = df["description"].isin(contact_desc) & in_zone
+    total_swings = swings_in_zone.sum()
+    if total_swings == 0:
+        return 0.0
+    return round(contact_in_zone.sum() / total_swings * 100, 2)
+
+
+# ============================================================
 # BATTER STATCAST PROFILE
 # ============================================================
 
 def get_batter_statcast(batter_id):
-    df = _safe_statcast_pull(statcast_batter, batter_id)
-
-    profile = {}
-
-    if df.empty:
-        # Safe fallback profile
-        return {
-            "Brl %": 0,
-            "HH %": 0,
-            "PullAir %": 0,
-            "LD %": 0,
-            "GB %": 0,
-            "Whiff %": 0,
-            "BBE": 0
-        }
-
-    # -----------------------------
-    # Core Statcast Metrics
-    # -----------------------------
-    profile["Brl %"] = round(df.get("barrel", pd.Series([0])).mean() * 100, 2)
-    profile["HH %"] = round(df.get("hard_hit", pd.Series([0])).mean() * 100, 2)
-    profile["PullAir %"] = round(df.get("pull_air", pd.Series([0])).mean() * 100, 2)
-    profile["LD %"] = round(df.get("ld", pd.Series([0])).mean() * 100, 2)
-    profile["GB %"] = round(df.get("gb", pd.Series([0])).mean() * 100, 2)
-
-    # -----------------------------
-    # Whiff % (Swinging Strikes)
-    # -----------------------------
-    if "description" in df.columns:
-        whiff = (df["description"].str.contains("swinging_strike")).mean() * 100
-    else:
-        whiff = 0
-
-    profile["Whiff %"] = round(whiff, 2)
-
-    # -----------------------------
-    # Sample Size
-    # -----------------------------
-    profile["BBE"] = len(df)
-
-    return profile
+    df, error = _safe_statcast_pull(statcast_batter, batter_id)
+    metrics = _compute_batted_ball_metrics(df)
+    metrics["Whiff %"] = _compute_whiff_pct(df)
+    metrics["_error"] = error
+    return metrics
 
 
 # ============================================================
@@ -123,53 +177,24 @@ def get_batter_statcast(batter_id):
 # ============================================================
 
 def get_pitcher_statcast(pitcher_id):
-    df = _safe_statcast_pull(statcast_pitcher, pitcher_id)
+    df, error = _safe_statcast_pull(statcast_pitcher, pitcher_id)
 
-    profile = {}
+    metrics = _compute_batted_ball_metrics(df)
+    metrics["Whiff %"] = _compute_whiff_pct(df)
+    metrics["ZoneContact %"] = _compute_zone_contact_pct(df)
 
-    if df.empty:
-        return {
-            "HR/BBE": 0,
-            "HH %": 0,
-            "LD %": 0,
-            "Brl %": 0,
-            "ZoneContact %": 0,
-            "Whiff %": 0,
-            "Pitch Arsenal": {},
-            "BBE": 0
-        }
-
-    # -----------------------------
-    # Core Pitcher Metrics
-    # -----------------------------
-    profile["HR/BBE"] = round(df.get("hr", pd.Series([0])).mean(), 3)
-    profile["HH %"] = round(df.get("hard_hit", pd.Series([0])).mean() * 100, 2)
-    profile["LD %"] = round(df.get("ld", pd.Series([0])).mean() * 100, 2)
-    profile["Brl %"] = round(df.get("barrel", pd.Series([0])).mean() * 100, 2)
-    profile["ZoneContact %"] = round(df.get("zone_contact", pd.Series([0])).mean() * 100, 2)
-
-    # -----------------------------
-    # Whiff % (Swinging Strikes)
-    # -----------------------------
-    if "description" in df.columns:
-        whiff = (df["description"].str.contains("swinging_strike")).mean() * 100
+    bbe = metrics["BBE"]
+    if not df.empty and "events" in df.columns:
+        hr_count = (df["events"] == "home_run").sum()
+        metrics["HR/BBE"] = round(hr_count / bbe, 3) if bbe > 0 else 0.0
     else:
-        whiff = 0
+        metrics["HR/BBE"] = 0.0
 
-    profile["Whiff %"] = round(whiff, 2)
-
-    # -----------------------------
-    # Pitch Arsenal (safe)
-    # -----------------------------
-    if "pitch_type" in df.columns:
-        arsenal = df["pitch_type"].value_counts(normalize=True) * 100
-        profile["Pitch Arsenal"] = {k: round(v, 2) for k, v in arsenal.items()}
+    if not df.empty and "pitch_type" in df.columns:
+        arsenal = df["pitch_type"].dropna().value_counts(normalize=True) * 100
+        metrics["Pitch Arsenal"] = {k: round(v, 2) for k, v in arsenal.items()}
     else:
-        profile["Pitch Arsenal"] = {}
+        metrics["Pitch Arsenal"] = {}
 
-    # -----------------------------
-    # Sample Size
-    # -----------------------------
-    profile["BBE"] = len(df)
-
-    return profile
+    metrics["_error"] = error
+    return metrics
