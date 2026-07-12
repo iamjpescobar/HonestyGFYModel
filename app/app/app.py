@@ -37,13 +37,69 @@ st.set_page_config(
 inject_kc_theme()
 
 # ---------------------------------------------------------
+# CACHED WRAPPERS (memory + speed)
+#
+# Streamlit reruns this entire script on EVERY interaction.
+# Without caching, every selectbox change refetches all data
+# and reallocates every dataframe — which is what was blowing
+# past Render's 512MB limit. These wrappers make repeat runs
+# reuse one shared copy instead.
+#
+# ttl         = seconds before a cached result expires
+# max_entries = cap on stored results, so the cache itself
+#               can't grow unbounded and cause the OOM
+# ---------------------------------------------------------
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def cached_teams():
+    return get_all_teams()
+
+
+@st.cache_data(ttl=3600, max_entries=32, show_spinner=False)
+def cached_position_players(team):
+    return get_position_players(team)
+
+
+@st.cache_data(ttl=3600, max_entries=32, show_spinner=False)
+def cached_pitchers(team):
+    return get_pitchers(team)
+
+
+@st.cache_data(ttl=1800, show_spinner="Loading batting stats...")
+def cached_batting_stats():
+    return load_batting_stats()
+
+
+@st.cache_data(ttl=86400, max_entries=256, show_spinner=False)
+def cached_pitcher_id(name):
+    return get_pitcher_id(name)
+
+
+@st.cache_data(ttl=1800, max_entries=16, show_spinner="Loading pitcher Statcast...")
+def cached_pitcher_statcast(pid):
+    return get_pitcher_statcast(pid)
+
+
+@st.cache_data(ttl=1800, max_entries=16, show_spinner=False)
+def cached_pitch_arsenal(pid):
+    # Keyed by pitcher id so the arsenal is cached per pitcher.
+    data = cached_pitcher_statcast(pid)
+    return build_pitch_arsenal(data)
+
+
+@st.cache_data(ttl=3600, max_entries=24, show_spinner=False)
+def cached_bvp(pitcher_name, batter_name):
+    return get_bvp_history(pitcher_name, batter_name)
+
+
+# ---------------------------------------------------------
 # SIDEBAR — SEPARATE BATTER + OPPOSING PITCHER SELECTION
 # ---------------------------------------------------------
-teams = get_all_teams()
+teams = cached_teams()
 
 st.sidebar.header("Batter Selection")
 batting_team = st.sidebar.selectbox("Batter's Team", teams, key="batting_team")
-batters = get_position_players(batting_team)
+batters = cached_position_players(batting_team)
 if not batters:
     st.sidebar.warning(f"No position players found for {batting_team} — roster data may not have loaded.")
 selected_batter = st.sidebar.selectbox(
@@ -52,7 +108,7 @@ selected_batter = st.sidebar.selectbox(
 
 st.sidebar.header("Opposing Pitcher Selection")
 pitching_team = st.sidebar.selectbox("Pitcher's Team", teams, key="pitching_team")
-pitchers = get_pitchers(pitching_team)
+pitchers = cached_pitchers(pitching_team)
 if not pitchers:
     st.sidebar.warning(f"No pitchers found for {pitching_team} — roster data may not have loaded.")
 selected_pitcher = st.sidebar.selectbox(
@@ -60,9 +116,17 @@ selected_pitcher = st.sidebar.selectbox(
 )
 
 # ---------------------------------------------------------
+# GUARD — don't build profiles until both selections exist
+# (empty rosters would otherwise crash the engines below)
+# ---------------------------------------------------------
+if not selected_batter or not selected_pitcher:
+    st.info("Select a batter and an opposing pitcher in the sidebar to run the model.")
+    st.stop()
+
+# ---------------------------------------------------------
 # LOAD BATTER STATS + BUILD BATTER PROFILE
 # ---------------------------------------------------------
-stats_df, stats_load_error = load_batting_stats()
+stats_df, stats_load_error = cached_batting_stats()
 batter_profile = get_batter_profile(selected_batter, stats_df, stats_load_error)
 
 if batter_profile.get("_error"):
@@ -77,9 +141,9 @@ elif batter_profile.get("_source") == "Statcast (FanGraphs unavailable)":
 # ---------------------------------------------------------
 # BUILD PITCHER PROFILE (STATCAST + ARSENAL)
 # ---------------------------------------------------------
-pitcher_id = get_pitcher_id(selected_pitcher)
-pitcher_data = get_pitcher_statcast(pitcher_id)
-pitcher_arsenal = build_pitch_arsenal(pitcher_data)
+pitcher_id = cached_pitcher_id(selected_pitcher)
+pitcher_data = cached_pitcher_statcast(pitcher_id)
+pitcher_arsenal = cached_pitch_arsenal(pitcher_id)
 
 if pitcher_data.get("_error"):
     status_banner(
@@ -152,7 +216,7 @@ st.markdown(card_close(), unsafe_allow_html=True)
 # BVP ENGINE
 # ---------------------------------------------------------
 st.markdown(card_open("BVP History"), unsafe_allow_html=True)
-bvp_history = get_bvp_history(selected_pitcher, selected_batter)
+bvp_history = cached_bvp(selected_pitcher, selected_batter)
 st.dataframe(bvp_history, width='stretch')
 st.markdown(card_close(), unsafe_allow_html=True)
 
