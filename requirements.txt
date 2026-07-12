@@ -6,3 +6,4 @@ baseball_scraper
 streamlit-authenticator
 PyYAML
 pyarrow
+psutil
