@@ -178,7 +178,7 @@ colA, colB = st.columns([1, 1])
 with colA:
     st.markdown(card_open(focus_batter, f"vs {pitcher_name}"), unsafe_allow_html=True)
     st.markdown('<div class="pf-metric-label">SLAM Score</div>', unsafe_allow_html=True)
-    st.progress(min(max(focus_row["SLAM"] / 100.0, 0.0), 1.0))
+    st.progress(float(min(max(focus_row["SLAM"] / 100.0, 0.0), 1.0)))
     st.markdown(
         f'<div class="pf-metric-value">{focus_row["DangerZone"]}</div>'
         f'<div class="pf-metric-label">Danger Zone Score</div>',
