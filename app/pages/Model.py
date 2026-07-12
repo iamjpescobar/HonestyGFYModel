@@ -12,7 +12,6 @@ from engines.pitch_affinity_engine import compute_pitch_affinity_multiplier
 from engines.matchup_engine import compute_matchup_multiplier
 from engines.roster import get_all_teams, get_pitchers, get_position_players
 from engines.statcast_engine import (
-    get_pitcher_id,
     get_pitcher_statcast,
     build_pitch_arsenal
 )
@@ -31,6 +30,23 @@ from auth import render_account_sidebar
 
 inject_kc_theme()
 render_account_sidebar()
+
+# ---------------------------------------------------------
+# CACHED WRAPPERS
+# Streamlit reruns this whole script on every widget change —
+# without these, the FanGraphs pull and BvP lookup refetch on
+# every interaction, which is both slow and a memory spike.
+# ---------------------------------------------------------
+
+@st.cache_data(ttl=1800, show_spinner="Loading batting stats...")
+def cached_batting_stats():
+    return load_batting_stats()
+
+
+@st.cache_data(ttl=3600, max_entries=24, show_spinner=False)
+def cached_bvp(pitcher_name, batter_name):
+    return get_bvp_history(pitcher_name, batter_name)
+
 
 # ---------------------------------------------------------
 # SIDEBAR — SEPARATE BATTER + OPPOSING PITCHER SELECTION
@@ -63,7 +79,7 @@ selected_pitcher = st.sidebar.selectbox(
 # ---------------------------------------------------------
 # LOAD BATTER STATS + BUILD BATTER PROFILE
 # ---------------------------------------------------------
-stats_df, stats_load_error = load_batting_stats()
+stats_df, stats_load_error = cached_batting_stats()
 batter_profile = get_batter_profile(selected_batter, stats_df, stats_load_error)
 
 if batter_profile.get("_error"):
@@ -77,8 +93,16 @@ elif batter_profile.get("_source") == "Statcast (FanGraphs unavailable)":
 
 # ---------------------------------------------------------
 # BUILD PITCHER PROFILE (STATCAST + ARSENAL)
+#
+# The pitcher's real MLBAM id comes straight from the roster —
+# no name-based lookup needed. (The old get_pitcher_id() call
+# downloaded pybaseball's entire player register into memory
+# just to resolve a name we already had the id for; that was
+# a large part of this page's memory footprint.)
 # ---------------------------------------------------------
-pitcher_id = get_pitcher_id(selected_pitcher)
+pitcher_row = next((p for p in pitchers if p["name"] == selected_pitcher), None)
+pitcher_id = pitcher_row.get("id") if pitcher_row else None
+
 pitcher_data = get_pitcher_statcast(pitcher_id)
 pitcher_arsenal = build_pitch_arsenal(pitcher_data)
 
@@ -148,7 +172,7 @@ st.markdown(card_close(), unsafe_allow_html=True)
 # BVP ENGINE
 # ---------------------------------------------------------
 st.markdown(card_open("BVP History"), unsafe_allow_html=True)
-bvp_history = get_bvp_history(selected_pitcher, selected_batter)
+bvp_history = cached_bvp(selected_pitcher, selected_batter)
 st.dataframe(plain_dark_table(bvp_history), width='stretch')
 st.markdown(card_close(), unsafe_allow_html=True)
 
@@ -173,7 +197,7 @@ affinity_mult = compute_pitch_affinity_multiplier(
     pitcher_arsenal
 )
 st.markdown(card_open("Pitch Affinity"), unsafe_allow_html=True)
-st.markdown(badge(f"Multiplier {affinity_mult:.2f}", "accent"), unsafe_allow_html=True)
+st.markdown(badge(f"Affinity Multiplier {affinity_mult:.2f}", "accent"), unsafe_allow_html=True)
 st.markdown(card_close(), unsafe_allow_html=True)
 
 # ---------------------------------------------------------
