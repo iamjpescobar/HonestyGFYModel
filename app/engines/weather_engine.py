@@ -12,6 +12,14 @@ posted weather for that game yet (common for games more than a day out).
 import requests
 import streamlit as st
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+# "Today" for an MLB slate means today in US EASTERN time, not the
+# server's clock. Render's servers run on UTC, which rolls over to the
+# next date at 8 PM ET — using the server's date made the app start
+# asking MLB for TOMORROW's (usually unposted) slate every night at 8,
+# blanking the Game Card during prime hours while games were live.
+EASTERN = ZoneInfo("America/New_York")
 
 
 @st.cache_data(ttl=900)
@@ -19,10 +27,10 @@ def get_todays_games_with_weather(date_str: str = None):
     """
     Returns today's (or a given date's) games with venue, start time,
     and weather condition/temp/wind if MLB has posted it yet.
-    date_str: 'YYYY-MM-DD', defaults to today.
+    date_str: 'YYYY-MM-DD', defaults to today (US Eastern).
     """
     if date_str is None:
-        date_str = datetime.today().strftime("%Y-%m-%d")
+        date_str = datetime.now(EASTERN).strftime("%Y-%m-%d")
 
     url = "https://statsapi.mlb.com/api/v1/schedule"
     params = {
