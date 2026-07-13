@@ -570,78 +570,38 @@ def card_open(title: str = "", subtitle: str = "") -> str:
 
 def sport_switcher(active: str = "MLB"):
     """
-    Clickable sport tab strip, styled to match the original display-only
-    version: active sport lit with an accent underline, the rest faint
-    with a small SOON tag. Only MLB is wired to real data right now —
-    the other sports lead to their own "coming soon" pages rather than
-    pretending to be live, since their data engines don't exist yet.
-    Clicking a tab sets st.session_state["lc_sport"] and reruns; app.py
-    reads that to decide whether to render MLB navigation or a sport page.
+    Clickable sport tab strip — rendered once, at app level (app.py),
+    so it exists on every page. Uses st.segmented_control (the same
+    native component the Game Card's pitcher picker uses) so it renders
+    compact and consistent on any Streamlit version, with no CSS hacks.
+    Only MLB is wired to real data; the other sports lead to their own
+    "coming soon" pages rather than pretending to be live.
+    Clicking sets st.session_state["lc_sport"] and reruns; app.py reads
+    that to decide whether to render MLB navigation or a sport page.
     """
     import streamlit as st
 
-    sports = ["MLB", "NBA", "NHL", "NFL"]
+    sports = ["MLB", "KBO", "NBA", "NHL", "NFL"]
     st.session_state.setdefault("lc_sport", "MLB")
 
+    choice = st.segmented_control(
+        "Sport",
+        sports,
+        default=active if active in sports else "MLB",
+        key="lc_sport_seg",
+        label_visibility="collapsed",
+    )
     st.markdown(
-        f"""
-        <style>
-        /* Base tab look: transparent, mono-ish, underline track */
-        div[class*="st-key-lc_sport_tab_"] button {{
-            background: transparent !important;
-            border: none !important;
-            border-radius: 0 !important;
-            border-bottom: 2px solid {COLOR["border"]} !important;
-            color: {COLOR["text_faint"]} !important;
-            font-family: 'JetBrains Mono', monospace !important;
-            font-weight: 700 !important;
-            font-size: 12.5px !important;
-            letter-spacing: 0.08em !important;
-            text-transform: uppercase;
-            padding: 6px 0 8px 0 !important;
-            min-height: 0 !important;
-            width: 100%;
-            transition: color 0.15s ease, border-color 0.15s ease;
-        }}
-        div[class*="st-key-lc_sport_tab_"] button:hover {{
-            color: {COLOR["text"]} !important;
-            border-bottom-color: {COLOR["text"]} !important;
-        }}
-        /* Active sport: accent color + lit underline */
-        div[class*="st-key-lc_sport_tab_{active}"] button {{
-            color: {COLOR["stat_high"]} !important;
-            border-bottom-color: {COLOR["stat_high"]} !important;
-        }}
-        .lc-sport-soon {{
-            text-align: center;
-            font-size: 8.5px;
-            font-weight: 700;
-            letter-spacing: 0.14em;
-            color: {COLOR["text_faint"]};
-            opacity: 0.75;
-            margin-top: 2px;
-            text-transform: uppercase;
-        }}
-        .lc-sport-soon-spacer {{
-            height: 13px;
-        }}
-        </style>
-        """,
+        f'<div style="text-align:center; font-size:8.5px; font-weight:700; '
+        f'letter-spacing:0.14em; color:{COLOR["text_faint"]}; opacity:0.75; '
+        f'margin-top:2px; text-transform:uppercase;">'
+        f'MLB live · NBA / NHL / NFL soon</div>',
         unsafe_allow_html=True,
     )
 
-    cols = st.columns(len(sports), gap="small")
-    for i, sport in enumerate(sports):
-        with cols[i]:
-            if st.button(sport, key=f"lc_sport_tab_{sport}", use_container_width=True):
-                if sport != active:
-                    st.session_state["lc_sport"] = sport
-                    st.rerun()
-            if sport == "MLB":
-                # Spacer keeps all four columns the same height
-                st.markdown('<div class="lc-sport-soon-spacer"></div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="lc-sport-soon">SOON</div>', unsafe_allow_html=True)
+    if choice and choice != active:
+        st.session_state["lc_sport"] = choice
+        st.rerun()
 
 
 def card(key: str):

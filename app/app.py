@@ -63,6 +63,7 @@ if is_admin():
 # Sport page loader (non-MLB sports)
 # -------------------------
 SPORT_PAGES = {
+    "KBO": "pages/KBO.py",
     "NFL": "pages/NFL.py",
     "NBA": "pages/NBA.py",
     "NHL": "pages/NHL.py",
