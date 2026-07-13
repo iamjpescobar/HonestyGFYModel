@@ -25,5 +25,5 @@ jobs:
         run: python intl_probe.py
 
       - name: Sample chosen sources (structure recon)
-        if: ${{ false }}
+       
         run: python intl_sample.py
