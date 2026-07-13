@@ -2,7 +2,8 @@ name: Nightly Statcast Data
 
 on:
   schedule:
-    - cron: "0 10 * * *"   # 10:00 UTC = 6:00 AM ET, after all games are final
+    - cron: "0 10 * * *"   # 10:00 UTC = 6:00 AM ET — MLB refresh after all games final
+    - cron: "0 8 * * *"    # 08:00 UTC = 5:00 PM JST/KST — pre-game international refresh (postponement calls)
   workflow_dispatch: {}     # lets you run it manually from the Actions tab
 
 permissions:
@@ -20,7 +21,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pybaseball pandas pyarrow
+        run: pip install pybaseball pandas pyarrow requests
+
+      - name: Fetch NPB slate (real npb.jp data)
+        run: python npb_precompute.py || echo "NPB fetch failed - continuing without it"
 
       - name: Fetch and package real Statcast data
         run: python precompute.py
@@ -32,7 +36,7 @@ jobs:
           gh release delete nightly-data -y || true
           gh release create nightly-data statcast_data.tar.gz \
             -t "Nightly Statcast Data" \
-            -n "Auto-generated nightly. Real Baseball Savant pitch data, per-player parquet. See manifest.json inside for fetch timestamp."
+            -n "Auto-generated nightly. Real Baseball Savant pitch data + NPB slate from npb.jp. See manifest.json inside for fetch timestamp."
 
       - name: Trigger Render deploy
         env:
@@ -41,5 +45,5 @@ jobs:
           if [ -n "$HOOK" ]; then
             curl -fsS "$HOOK" && echo "Render deploy triggered."
           else
-            echo "RENDER_DEPLOY_HOOK secret not set — skipping deploy trigger."
+            echo "RENDER_DEPLOY_HOOK secret not set - skipping deploy trigger."
           fi
