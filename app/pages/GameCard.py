@@ -7,7 +7,7 @@ EASTERN = ZoneInfo("America/New_York")
 
 from styles.kc_theme import (
     inject_kc_theme, badge, card, footer, COLOR,
-    sport_switcher, internal_nav, pitch_color, pitch_name, edge_tag
+    internal_nav, pitch_color, pitch_name, edge_tag
 )
 from styles.table_style import style_stat_table, plain_dark_table
 from auth import render_account_sidebar
@@ -76,9 +76,6 @@ with nav_col:
         st.rerun()
 
     if not st.session_state["nav_collapsed"]:
-        sport_switcher(active="MLB")
-        st.markdown(f'<div style="height:8px;"></div>', unsafe_allow_html=True)
-
         name = st.session_state.get("name", "")
         role = st.session_state.get("lc_role", "subscriber")
         role_badge_color = COLOR["stat_high"] if role == "admin" else COLOR["warn"]
