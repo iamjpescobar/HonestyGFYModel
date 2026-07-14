@@ -79,6 +79,28 @@ def _record(competitor):
     return out
 
 
+TEAM_STAT_MAP = [
+    ("fieldgoalpct", "fg_pct"), ("threepointfieldgoalpct", "tp_pct"),
+    ("threepointpct", "tp_pct"), ("avgrebounds", "reb_g"),
+    ("avgassists", "ast_g"), ("avgturnovers", "to_g"),
+]
+
+
+def _team_stats(competitor):
+    """Selected season stats from the feed's own statistics block —
+    stored only when present, matched defensively by name."""
+    out = {}
+    for s in competitor.get("statistics", []) or []:
+        name = (s.get("name") or "").lower().replace(" ", "")
+        val = s.get("displayValue")
+        if val is None:
+            continue
+        for needle, key in TEAM_STAT_MAP:
+            if name == needle and key not in out:
+                out[key] = val
+    return out
+
+
 def _leaders(competitor):
     out = []
     for cat in competitor.get("leaders", []) or []:
@@ -122,6 +144,8 @@ def parse_scoreboard_events(payload):
             "status": status,
         }
         for side, c in (("away", away), ("home", home)):
+            for k, v in _team_stats(c).items():
+                g[f"{side}_{k}"] = v
             recs = _record(c)
             if recs.get("overall"):
                 g[f"{side}_record"] = recs["overall"]
@@ -175,8 +199,11 @@ def parse_boxscore(event_id, game_date, logs, debug=False):
             labels = [l.upper() for l in (stat_group.get("labels") or stat_group.get("names") or [])]
             if "PTS" not in labels:
                 continue
-            idx = {k: labels.index(k) for k in ("MIN", "PTS", "REB", "AST") if k in labels}
+            idx = {k: labels.index(k) for k in ("MIN", "PTS", "REB", "AST",
+                                                 "STL", "BLK", "TO") if k in labels}
             tpt_i = labels.index("3PT") if "3PT" in labels else None
+            fg_i = labels.index("FG") if "FG" in labels else None
+            ft_i = labels.index("FT") if "FT" in labels else None
             if debug:
                 print(f"  [debug] labels for event {event_id}: {labels}")
             for entry in stat_group.get("athletes", []) or []:
@@ -189,11 +216,18 @@ def parse_boxscore(event_id, game_date, logs, debug=False):
                 line = {"date": game_date, "team": team_name, "opp": opp_name}
                 for k, i2 in idx.items():
                     line[k.lower()] = _num(stats[i2])
-                if tpt_i is not None and len(stats) > tpt_i:
-                    made = str(stats[tpt_i]).split("-")[0]
-                    line["tpm"] = _num(made)
+                def _made_att(i, mk, ak):
+                    if i is not None and len(stats) > i:
+                        parts = str(stats[i]).split("-")
+                        if len(parts) == 2:
+                            line[mk], line[ak] = _num(parts[0]), _num(parts[1])
+                _made_att(tpt_i, "tpm", "tpa")
+                _made_att(fg_i, "fgm", "fga")
+                _made_att(ft_i, "ftm", "fta")
                 if line.get("pts") is not None:
                     line["pra"] = (line.get("pts") or 0) + (line.get("reb") or 0) + (line.get("ast") or 0)
+                if line.get("stl") is not None or line.get("blk") is not None:
+                    line["stocks"] = (line.get("stl") or 0) + (line.get("blk") or 0)
                 if line.get("min") in (None, 0):
                     continue
                 rec = logs.setdefault(str(athlete["id"]), {
@@ -277,6 +311,12 @@ def player_summaries(logs):
             "apg": col("ast", games), "l5_apg": col("ast", games[-5:]), "l10_apg": col("ast", games[-10:]),
             "tpm": col("tpm", games), "l5_tpm": col("tpm", games[-5:]), "l10_tpm": col("tpm", games[-10:]),
             "pra": col("pra", games), "l5_pra": col("pra", games[-5:]), "l10_pra": col("pra", games[-10:]),
+            "stocks": col("stocks", games), "l5_stocks": col("stocks", games[-5:]),
+            "l10_stocks": col("stocks", games[-10:]),
+            "stl": col("stl", games), "blk": col("blk", games),
+            "to": col("to", games), "l5_to": col("to", games[-5:]), "l10_to": col("to", games[-10:]),
+            "fga": col("fga", games), "l5_fga": col("fga", games[-5:]), "l10_fga": col("fga", games[-10:]),
+            "fta": col("fta", games), "l5_fta": col("fta", games[-5:]), "l10_fta": col("fta", games[-10:]),
         }
     return out
 
@@ -291,7 +331,9 @@ def player_h2h(logs, pid, opponent):
             "h2h_rpg": _avg([g.get("reb") for g in games]),
             "h2h_apg": _avg([g.get("ast") for g in games]),
             "h2h_tpm": _avg([g.get("tpm") for g in games]),
-            "h2h_pra": _avg([g.get("pra") for g in games])}
+            "h2h_pra": _avg([g.get("pra") for g in games]),
+            "h2h_stocks": _avg([g.get("stocks") for g in games]),
+            "h2h_fga": _avg([g.get("fga") for g in games])}
 
 
 def main():
@@ -354,14 +396,19 @@ def main():
                 g[f"{side}_l10"] = t["l10"]
 
             opponent = g[opp_side]
-            picks = [p for p in by_team.get(g[side], []) if p["gp"] >= 3][:7]
+            picks = [p for p in by_team.get(g[side], []) if p["gp"] >= 3][:9]
             row_keys = ("name", "pos", "gp", "min",
                         "ppg", "l5_ppg", "l10_ppg",
                         "rpg", "l5_rpg", "l10_rpg",
                         "apg", "l5_apg", "l10_apg",
                         "tpm", "l5_tpm", "l10_tpm",
-                        "pra", "l5_pra", "l10_pra")
-            h2h_keys = ("h2h_ppg", "h2h_rpg", "h2h_apg", "h2h_tpm", "h2h_pra", "h2h_gp")
+                        "pra", "l5_pra", "l10_pra",
+                        "stocks", "l5_stocks", "l10_stocks", "stl", "blk",
+                        "to", "l5_to", "l10_to",
+                        "fga", "l5_fga", "l10_fga",
+                        "fta", "l5_fta", "l10_fta")
+            h2h_keys = ("h2h_ppg", "h2h_rpg", "h2h_apg", "h2h_tpm", "h2h_pra",
+                        "h2h_stocks", "h2h_fga", "h2h_gp")
             rows = []
             for p in picks:
                 row = {k: p.get(k) for k in row_keys}

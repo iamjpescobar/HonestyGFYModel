@@ -103,6 +103,9 @@ TAPE_ROWS = [
     ("Last 10", "l10"),
     ("Points For / G", "pf_pg"), ("Points Against / G", "pa_pg"),
     ("Avg Game Total", "avg_total"),
+    ("FG %", "fg_pct"), ("3P %", "tp_pct"),
+    ("Rebounds / G", "reb_g"), ("Assists / G", "ast_g"),
+    ("Turnovers / G", "to_g"),
 ]
 
 PROP_TABS = [
@@ -111,7 +114,13 @@ PROP_TABS = [
     ("Assists", "apg", "l5_apg", "l10_apg", "h2h_apg"),
     ("Threes", "tpm", "l5_tpm", "l10_tpm", "h2h_tpm"),
     ("PRA", "pra", "l5_pra", "l10_pra", "h2h_pra"),
+    ("Stocks", "stocks", "l5_stocks", "l10_stocks", "h2h_stocks"),
+    ("Volume", "fga", "l5_fga", "l10_fga", "h2h_fga"),
 ]
+TAB_NOTES = {
+    "Stocks": "Stocks = steals + blocks combined \u2014 the STL/BLK columns show the season split.",
+    "Volume": "FGA per game \u2014 shot volume drives points props; FTA and TO shown for context.",
+}
 
 
 def _render_slate():
@@ -229,20 +238,43 @@ def _render_slate():
                                 f'font-size:13px; margin:6px 0 2px 0;">{g.get(side, "")}</div>',
                                 unsafe_allow_html=True,
                             )
-                            df = pd.DataFrame([{
-                                "Player": p.get("name"), "Pos": p.get("pos"),
-                                "GP": p.get("gp"), "MIN": p.get("min"),
-                                "Season": p.get(season_k),
-                                "L5": p.get(l5_k), "L10": p.get(l10_k),
-                                "vs OPP": p.get(h2h_k), "H2H GP": p.get("h2h_gp"),
-                            } for p in plist])
+                            rows = []
+                            for p in plist:
+                                row = {
+                                    "Player": p.get("name"), "Pos": p.get("pos"),
+                                    "GP": p.get("gp"), "MIN": p.get("min"),
+                                    "Season": p.get(season_k),
+                                    "L5": p.get(l5_k), "L10": p.get(l10_k),
+                                    "vs OPP": p.get(h2h_k), "H2H GP": p.get("h2h_gp"),
+                                }
+                                if label == "Stocks":
+                                    row["STL"] = p.get("stl")
+                                    row["BLK"] = p.get("blk")
+                                if label == "Volume":
+                                    row["FTA"] = p.get("fta")
+                                    row["TO"] = p.get("to")
+                                rows.append(row)
+                            df = pd.DataFrame(rows)
+                            num_cols = [c for c in df.columns if c not in ("Player", "Pos")]
+                            for c in num_cols:
+                                df[c] = pd.to_numeric(df[c], errors="coerce")
+                            fmts = {c: "{:.1f}" for c in num_cols}
+                            fmts["GP"] = "{:.0f}"
+                            fmts["H2H GP"] = "{:.0f}"
                             styled = style_stat_table(
                                 df, favor_high=["Season", "L5", "L10", "vs OPP"],
                                 gradient=True,
-                            ).format({"MIN": "{:.1f}", "Season": "{:.1f}", "L5": "{:.1f}",
-                                      "L10": "{:.1f}", "vs OPP": "{:.1f}"}, na_rep="\u2014")
+                            ).format(fmts, na_rep="\u2014")
+                            col_cfg = {c: st.column_config.NumberColumn(c, width="small")
+                                       for c in num_cols}
+                            col_cfg["Player"] = st.column_config.TextColumn("Player", width="medium")
+                            col_cfg["Pos"] = st.column_config.TextColumn("Pos", width="small")
                             st.dataframe(styled, width="stretch", hide_index=True,
-                                         height=40 + 36 * len(df))
+                                         height=40 + 36 * len(df),
+                                         column_config=col_cfg)
+                            note = TAB_NOTES.get(label)
+                            if note:
+                                st.caption(note)
 
     return any_live
 

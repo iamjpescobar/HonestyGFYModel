@@ -32,7 +32,7 @@ require_login()  # blocks with a themed login screen until authenticated
 # -------------------------
 selected_sport = st.session_state.get("lc_sport", "MLB")
 
-_, _strip_col = st.columns([7, 3])
+_, _strip_col = st.columns([4, 6])
 with _strip_col:
     sport_switcher(active=selected_sport)
 

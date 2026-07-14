@@ -512,18 +512,42 @@ def inject_kc_theme():
     )
 
 
-def page_header(title: str, subtitle: str = "", eyebrow: str = "LOS CAPPERS"):
+SPORT_ACCENTS = {
+    "MLB": None,             # MLB keeps the house style
+    "KBO": "#4FA3FF",
+    "NPB": "#E4573D",
+    "WNBA": "#FF7A00",
+    "NBA": "#E03A3E",
+    "NHL": "#9BB0C1",
+    "NFL": "#3B82F6",
+}
+
+
+def page_header(title: str, subtitle: str = "", eyebrow: str = "LOS CAPPERS",
+                accent: str = None):
     """
     Renders the shared page header — eyebrow label, title, subtitle, accent
     rule. Use this on every page instead of st.title()/emoji headers so the
     whole app reads as one product.
+
+    accent: hex color for the title/eyebrow/rule. If not given, it's
+    auto-detected from the title's first word (see SPORT_ACCENTS), so each
+    sport's pages carry their own identity with zero per-page changes.
     """
     import streamlit as st
 
-    html = f'<div class="lc-eyebrow">{eyebrow}</div><h1 class="lc-title">{title}</h1>'
+    if accent is None:
+        accent = SPORT_ACCENTS.get((title.split() or [""])[0])
+
+    eb_style = f' style="color:{accent};"' if accent else ""
+    ti_style = f' style="color:{accent};"' if accent else ""
+    rule_style = f' style="background:{accent};"' if accent else ""
+
+    html = (f'<div class="lc-eyebrow"{eb_style}>{eyebrow}</div>'
+            f'<h1 class="lc-title"{ti_style}>{title}</h1>')
     if subtitle:
         html += f'<div class="lc-subtitle">{subtitle}</div>'
-    html += '<div class="lc-rule"></div>'
+    html += f'<div class="lc-rule"{rule_style}></div>'
     st.markdown(html, unsafe_allow_html=True)
 
 
@@ -595,7 +619,7 @@ def sport_switcher(active: str = "MLB"):
         f'<div style="text-align:center; font-size:8.5px; font-weight:700; '
         f'letter-spacing:0.14em; color:{COLOR["text_faint"]}; opacity:0.75; '
         f'margin-top:2px; text-transform:uppercase;">'
-        f'MLB live · NBA / NHL / NFL soon</div>',
+        f'MLB · KBO · NPB · WNBA live — NBA / NHL / NFL soon</div>',
         unsafe_allow_html=True,
     )
 
