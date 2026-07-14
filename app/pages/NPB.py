@@ -83,11 +83,13 @@ else:
             bits.append(f'L10: {g[f"{side}_last10"]}')
         if not bits:
             return ""
+        dot = " \u00b7 "
+        joined = dot.join(bits)
         return (f'<div style="display:flex; justify-content:space-between; gap:12px; '
                 f'font-size:12.5px; margin-bottom:6px;">'
                 f'<span style="font-weight:700; color:{COLOR["text"]};">{name}</span>'
                 f'<span style="font-family:\'JetBrains Mono\',monospace; color:{COLOR["gold"]};">'
-                f'{" \u00b7 ".join(bits)}</span></div>')
+                f'{joined}</span></div>')
 
     for g in games:
         status = g.get("status", "scheduled")
