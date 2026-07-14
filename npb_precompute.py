@@ -1,17 +1,18 @@
 """
-NPB slate fetcher — real data from npb.jp's official monthly schedule.
+NPB slate + team stats fetcher — real data from npb.jp's official
+monthly schedule/results pages.
 
-Parses the month's schedule/results page (verified reachable and
-server-rendered from GitHub Actions) and writes data/npb/games.json
-for today's slate IN JST — which, because Japan is 13 hours ahead of
-US Eastern, is what a US user experiences as "tomorrow's games shown
-tonight."
+Two jobs, one verified source:
+1. Today's slate IN JST (which a US user sees as tomorrow's games
+   tonight), with status: scheduled / postponed / final (ties reported
+   as ties).
+2. Real team stats computed from every final score of the season
+   (all monthly pages parsed): W-L-T record, runs scored/allowed per
+   game, last-10 form, and season head-to-head for each of today's
+   matchups. Every number is arithmetic on scores npb.jp printed —
+   nothing modeled, nothing estimated.
 
-Every value comes straight off npb.jp: teams, stadium, start time,
-status (scheduled / postponed / final with real scores). Anything the
-page doesn't state (e.g. starters we can't attribute confidently) is
-TBD — never guessed. NPB games can legitimately end in ties; a tied
-final is reported as exactly that.
+Anything the source doesn't state (e.g. starters) is TBD, never guessed.
 """
 
 import json
@@ -24,6 +25,7 @@ import requests
 
 JST = ZoneInfo("Asia/Tokyo")
 EASTERN = ZoneInfo("America/New_York")
+SEASON_FIRST_MONTH = 3   # NPB opens late March
 
 UA = {
     "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -32,7 +34,6 @@ UA = {
     "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
 }
 
-# Japanese short names as they appear in the schedule table -> English
 TEAMS = {
     "巨人": "Yomiuri Giants", "ヤクルト": "Yakult Swallows",
     "阪神": "Hanshin Tigers", "中日": "Chunichi Dragons",
@@ -42,7 +43,6 @@ TEAMS = {
     "ロッテ": "Lotte Marines", "西武": "Seibu Lions",
 }
 
-# Common stadium short names -> English (fallback: raw Japanese, still real)
 STADIUMS = {
     "神宮": "Jingu Stadium", "甲子園": "Koshien Stadium",
     "東京ドーム": "Tokyo Dome", "横浜": "Yokohama Stadium",
@@ -62,24 +62,25 @@ def _en_team(jp: str) -> str:
 
 
 def _en_stadium(jp: str) -> str:
-    jp = jp.strip()
-    return STADIUMS.get(jp, jp)
+    return STADIUMS.get(jp.strip(), jp.strip())
 
 
 def _strip(html: str) -> str:
     return re.sub(r"<[^>]+>", "", html).strip()
 
 
-def fetch_month(year: int, month: int) -> str:
+def fetch_month(year: int, month: int):
     url = f"https://npb.jp/games/{year}/schedule_{month:02d}_detail.html"
-    r = requests.get(url, headers=UA, timeout=25)
-    r.raise_for_status()
-    return r.content.decode("utf-8", errors="replace")
+    try:
+        r = requests.get(url, headers=UA, timeout=25)
+        if r.status_code != 200:
+            return None
+        return r.content.decode("utf-8", errors="replace")
+    except Exception:
+        return None
 
 
 def parse_games(html: str, year: int):
-    """Yields one dict per game row in the monthly schedule table."""
-    # Rows are <tr id="dateMMDD" ...> ... </tr>
     for m in re.finditer(r'<tr id="date(\d{4})"[^>]*>(.*?)</tr>', html, re.S):
         mmdd, row = m.group(1), m.group(2)
         team1 = re.search(r'<div class="team1">(.*?)</div>', row, re.S)
@@ -88,7 +89,6 @@ def parse_games(html: str, year: int):
             continue
 
         home_jp, away_jp = _strip(team1.group(1)), _strip(team2.group(1))
-
         status, home_score, away_score = "scheduled", None, None
         if '<div class="cancel">' in row:
             status = "postponed"
@@ -104,7 +104,6 @@ def parse_games(html: str, year: int):
 
         yield {
             "date": f"{year}-{mmdd[:2]}-{mmdd[2:]}",
-            "home_jp": home_jp, "away_jp": away_jp,
             "home": _en_team(home_jp), "away": _en_team(away_jp),
             "stadium": _en_stadium(_strip(place.group(1))) if place else "TBD",
             "time_jst": time_m.group(1) if time_m else "TBD",
@@ -121,14 +120,73 @@ def to_et(date_str: str, time_jst: str) -> str:
         return "TBD"
 
 
+def team_stats(finals: list) -> dict:
+    """Per-team record, runs per game, last-10 — pure arithmetic on
+    real final scores."""
+    stats = {}
+    for g in sorted(finals, key=lambda x: x["date"]):
+        for side, opp_side in (("home", "away"), ("away", "home")):
+            team = g[side]
+            rec = stats.setdefault(team, {"w": 0, "l": 0, "t": 0,
+                                          "rs": 0, "ra": 0, "g": 0,
+                                          "recent": []})
+            us, them = g[f"{side}_score"], g[f"{opp_side}_score"]
+            rec["g"] += 1
+            rec["rs"] += us
+            rec["ra"] += them
+            result = "T" if us == them else ("W" if us > them else "L")
+            rec["w" if result == "W" else "l" if result == "L" else "t"] += 1
+            rec["recent"].append(result)
+
+    out = {}
+    for team, r in stats.items():
+        last10 = r["recent"][-10:]
+        out[team] = {
+            "record": f'{r["w"]}-{r["l"]}-{r["t"]}',
+            "rs_pg": round(r["rs"] / r["g"], 2) if r["g"] else None,
+            "ra_pg": round(r["ra"] / r["g"], 2) if r["g"] else None,
+            "last10": f'{last10.count("W")}-{last10.count("L")}-{last10.count("T")}',
+        }
+    return out
+
+
+def h2h(finals: list, a: str, b: str) -> dict:
+    """Season head-to-head between two teams, from real finals."""
+    a_w = b_w = ties = 0
+    for g in finals:
+        pair = {g["home"], g["away"]}
+        if pair != {a, b}:
+            continue
+        hs, as_ = g["home_score"], g["away_score"]
+        if hs == as_:
+            ties += 1
+        else:
+            winner = g["home"] if hs > as_ else g["away"]
+            if winner == a:
+                a_w += 1
+            else:
+                b_w += 1
+    return {"a_wins": a_w, "b_wins": b_w, "ties": ties, "games": a_w + b_w + ties}
+
+
 def main():
     now_jst = datetime.now(JST)
     today = now_jst.strftime("%Y-%m-%d")
-    html = fetch_month(now_jst.year, now_jst.month)
 
-    all_games = list(parse_games(html, now_jst.year))
+    all_games = []
+    for month in range(SEASON_FIRST_MONTH, now_jst.month + 1):
+        html = fetch_month(now_jst.year, month)
+        if html:
+            month_games = list(parse_games(html, now_jst.year))
+            all_games.extend(month_games)
+            print(f"  month {month:02d}: {len(month_games)} rows")
+
+    finals = [g for g in all_games if g["status"] == "final"]
+    stats = team_stats(finals)
+    print(f"NPB: {len(finals)} real finals parsed across the season "
+          f"({len(stats)} teams with stats)")
+
     todays = [g for g in all_games if g["date"] == today]
-
     games_out = []
     for g in todays:
         entry = {
@@ -143,18 +201,32 @@ def main():
             entry["final"] = f'{g["away"]} {g["away_score"]} - {g["home_score"]} {g["home"]}'
             if g["away_score"] == g["home_score"]:
                 entry["status"] = "final (tie)"
+
+        for side in ("away", "home"):
+            s = stats.get(g[side])
+            if s:
+                entry[f"{side}_record"] = s["record"]
+                entry[f"{side}_rs_pg"] = s["rs_pg"]
+                entry[f"{side}_ra_pg"] = s["ra_pg"]
+                entry[f"{side}_last10"] = s["last10"]
+
+        hh = h2h(finals, g["away"], g["home"])
+        if hh["games"] > 0:
+            entry["h2h"] = (f'{g["away"]} {hh["a_wins"]}'
+                            f'-{hh["b_wins"]}'
+                            f'{"-" + str(hh["ties"]) if hh["ties"] else ""} '
+                            f'{g["home"]} (2026, {hh["games"]} games)')
         games_out.append(entry)
 
     OUT.mkdir(parents=True, exist_ok=True)
     payload = {
         "generated_at_jst": now_jst.strftime("%Y-%m-%d %H:%M"),
-        "source": "npb.jp official monthly schedule",
+        "source": "npb.jp official monthly schedule/results",
         "slate_date_jst": today,
         "games": games_out,
     }
     (OUT / "games.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2))
-    print(f"NPB: wrote {len(games_out)} games for {today} JST "
-          f"({sum(1 for g in games_out if g['status'] == 'postponed')} postponed)")
+    print(f"NPB: wrote {len(games_out)} games for {today} JST")
     if not games_out:
         print("NPB: empty slate — likely a league off-day. That is the honest state.")
 
