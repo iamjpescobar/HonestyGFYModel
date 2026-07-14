@@ -1,70 +1,61 @@
 """
-International source sampler v2 — KBO structure recon.
+Source sampler v3 — WNBA recon.
 
-NPB is solved (npb.jp monthly page fully parsed — see npb_precompute.py).
-This pass digs into MyKBOStats' /schedule page, which answers 200 but
-uses div-based markup (no <table> rows), so v1's probe missed it.
-Dumps game-row structure and game links so the KBO fetcher gets written
-against reality. Reconnaissance only; nothing is saved.
+KBO and NPB are solved and live. This pass tests WNBA data sources
+from GitHub Actions' servers and dumps the JSON structure of whichever
+answers, so the fetcher gets written against reality. Expectation
+going in: ESPN's public scoreboard API is open; stats.wnba.com likely
+blocks datacenter IPs like its NBA sibling. Reconnaissance only.
 """
 
-import re
+import json
 import requests
 
 UA = {
     "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                    "AppleWebKit/537.36 (KHTML, like Gecko) "
                    "Chrome/126.0.0.0 Safari/537.36"),
-    "Accept-Language": "en-US,en;q=0.9,ko;q=0.8",
 }
 
-
-def fetch(url):
-    try:
-        r = requests.get(url, headers=UA, timeout=25)
-        return r.status_code, (r.content.decode("utf-8", errors="replace") if r.content else "")
-    except Exception as exc:
-        return "ERR", str(exc)
+TARGETS = [
+    ("ESPN WNBA scoreboard", "https://site.api.espn.com/apis/site/v2/sports/basketball/wnba/scoreboard"),
+    ("WNBA CDN today scoreboard", "https://cdn.wnba.com/static/json/liveData/scoreboard/todaysScoreboard_10.json"),
+    ("stats.wnba.com (expect block)", "https://stats.wnba.com/stats/scoreboardv3?GameDate=&LeagueID=10"),
+]
 
 
-def section(title):
-    print("\n" + "=" * 70 + "\n" + title + "\n" + "=" * 70)
-
-
-def dump_body(html, limit=6000):
-    """Prints the page's main content area with tags intact, whitespace
-    collapsed — enough structure to write a parser from."""
-    body = html
-    for anchor in ('<main', '<div id="content"', '<div class="content"', "<body"):
-        i = html.find(anchor)
-        if i != -1:
-            body = html[i:]
-            break
-    print(re.sub(r"\s+", " ", body)[:limit])
-
-
-def show_game_links(html, limit=30):
-    print("--- links containing /games/ or /game ---")
-    hits = re.findall(r'href="([^"]*game[^"]*)"', html, re.I)
-    for h in list(dict.fromkeys(hits))[:limit]:
-        print(" ", h)
-    if not hits:
-        print("  (none)")
+def trim(obj, depth=0):
+    """Prints a JSON object's shape: keys, list lengths, first elements."""
+    pad = "  " * depth
+    if isinstance(obj, dict):
+        for k, v in list(obj.items())[:12]:
+            if isinstance(v, (dict, list)):
+                print(f"{pad}{k}:")
+                trim(v, depth + 1)
+            else:
+                print(f"{pad}{k}: {str(v)[:70]}")
+    elif isinstance(obj, list):
+        print(f"{pad}[list, {len(obj)} items]")
+        if obj:
+            trim(obj[0], depth + 1)
 
 
 def main():
-    for label, url in [
-        ("KBO / MyKBOStats /schedule", "https://mykbostats.com/schedule"),
-        ("KBO / MyKBOStats homepage (today's games block?)", "https://mykbostats.com/"),
-    ]:
-        section(label)
-        code, html = fetch(url)
-        print(f"status {code}, {len(html):,} bytes")
-        if isinstance(code, int) and code == 200:
-            show_game_links(html)
-            dump_body(html)
-
-    print("\n=== sample v2 done ===")
+    for label, url in TARGETS:
+        print("\n" + "=" * 70 + f"\n{label}\n" + "=" * 70)
+        try:
+            r = requests.get(url, headers=UA, timeout=20)
+            print(f"status {r.status_code}, {len(r.content):,} bytes")
+            if r.status_code == 200:
+                try:
+                    data = r.json()
+                    trim(data)
+                except Exception:
+                    print("(200 but not JSON) first 400 chars:")
+                    print(r.text[:400])
+        except Exception as exc:
+            print(f"ERR: {exc}")
+    print("\n=== WNBA recon done ===")
 
 
 if __name__ == "__main__":
