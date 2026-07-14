@@ -66,10 +66,17 @@ def _to_et(iso_utc: str) -> str:
 
 
 def _record(competitor):
+    out = {}
     for rec in competitor.get("records", []) or []:
-        if rec.get("name") == "overall" and rec.get("summary"):
-            return rec["summary"]
-    return None
+        name = (rec.get("name") or rec.get("type") or "").lower()
+        if rec.get("summary"):
+            if name == "overall":
+                out["overall"] = rec["summary"]
+            elif name in ("home",):
+                out["home"] = rec["summary"]
+            elif name in ("road", "away"):
+                out["road"] = rec["summary"]
+    return out
 
 
 def _leaders(competitor):
@@ -115,9 +122,13 @@ def parse_scoreboard_events(payload):
             "status": status,
         }
         for side, c in (("away", away), ("home", home)):
-            rec = _record(c)
-            if rec:
-                g[f"{side}_record"] = rec
+            recs = _record(c)
+            if recs.get("overall"):
+                g[f"{side}_record"] = recs["overall"]
+            if recs.get("home"):
+                g[f"{side}_home_record"] = recs["home"]
+            if recs.get("road"):
+                g[f"{side}_road_record"] = recs["road"]
             lds = _leaders(c)
             if lds:
                 g[f"{side}_leaders"] = lds
@@ -165,6 +176,7 @@ def parse_boxscore(event_id, game_date, logs, debug=False):
             if "PTS" not in labels:
                 continue
             idx = {k: labels.index(k) for k in ("MIN", "PTS", "REB", "AST") if k in labels}
+            tpt_i = labels.index("3PT") if "3PT" in labels else None
             if debug:
                 print(f"  [debug] labels for event {event_id}: {labels}")
             for entry in stat_group.get("athletes", []) or []:
@@ -177,6 +189,11 @@ def parse_boxscore(event_id, game_date, logs, debug=False):
                 line = {"date": game_date, "team": team_name, "opp": opp_name}
                 for k, i2 in idx.items():
                     line[k.lower()] = _num(stats[i2])
+                if tpt_i is not None and len(stats) > tpt_i:
+                    made = str(stats[tpt_i]).split("-")[0]
+                    line["tpm"] = _num(made)
+                if line.get("pts") is not None:
+                    line["pra"] = (line.get("pts") or 0) + (line.get("reb") or 0) + (line.get("ast") or 0)
                 if line.get("min") in (None, 0):
                     continue
                 rec = logs.setdefault(str(athlete["id"]), {
@@ -254,12 +271,12 @@ def player_summaries(logs):
             "pid": pid,
             "name": rec["name"], "full_name": rec["full_name"],
             "pos": rec["pos"], "team": rec["team"], "gp": gp,
-            "min": col("min", games), "ppg": col("pts", games),
-            "rpg": col("reb", games), "apg": col("ast", games),
-            "l5_ppg": col("pts", games[-5:]), "l5_rpg": col("reb", games[-5:]),
-            "l5_apg": col("ast", games[-5:]),
-            "l10_ppg": col("pts", games[-10:]), "l10_rpg": col("reb", games[-10:]),
-            "l10_apg": col("ast", games[-10:]),
+            "min": col("min", games),
+            "ppg": col("pts", games), "l5_ppg": col("pts", games[-5:]), "l10_ppg": col("pts", games[-10:]),
+            "rpg": col("reb", games), "l5_rpg": col("reb", games[-5:]), "l10_rpg": col("reb", games[-10:]),
+            "apg": col("ast", games), "l5_apg": col("ast", games[-5:]), "l10_apg": col("ast", games[-10:]),
+            "tpm": col("tpm", games), "l5_tpm": col("tpm", games[-5:]), "l10_tpm": col("tpm", games[-10:]),
+            "pra": col("pra", games), "l5_pra": col("pra", games[-5:]), "l10_pra": col("pra", games[-10:]),
         }
     return out
 
@@ -272,7 +289,9 @@ def player_h2h(logs, pid, opponent):
     return {"h2h_gp": len(games),
             "h2h_ppg": _avg([g.get("pts") for g in games]),
             "h2h_rpg": _avg([g.get("reb") for g in games]),
-            "h2h_apg": _avg([g.get("ast") for g in games])}
+            "h2h_apg": _avg([g.get("ast") for g in games]),
+            "h2h_tpm": _avg([g.get("tpm") for g in games]),
+            "h2h_pra": _avg([g.get("pra") for g in games])}
 
 
 def main():
@@ -336,13 +355,19 @@ def main():
 
             opponent = g[opp_side]
             picks = [p for p in by_team.get(g[side], []) if p["gp"] >= 3][:7]
+            row_keys = ("name", "pos", "gp", "min",
+                        "ppg", "l5_ppg", "l10_ppg",
+                        "rpg", "l5_rpg", "l10_rpg",
+                        "apg", "l5_apg", "l10_apg",
+                        "tpm", "l5_tpm", "l10_tpm",
+                        "pra", "l5_pra", "l10_pra")
+            h2h_keys = ("h2h_ppg", "h2h_rpg", "h2h_apg", "h2h_tpm", "h2h_pra", "h2h_gp")
             rows = []
             for p in picks:
-                row = {k: p[k] for k in ("name", "pos", "gp", "min", "ppg", "rpg",
-                                          "apg", "l5_ppg", "l10_ppg", "l5_rpg", "l5_apg")}
-                hh = player_h2h(logs, p["pid"], opponent)
-                if hh:
-                    row.update(hh)
+                row = {k: p.get(k) for k in row_keys}
+                hh = player_h2h(logs, p["pid"], opponent) or {}
+                for k in h2h_keys:
+                    row[k] = hh.get(k)
                 rows.append(row)
             if rows:
                 g[f"{side}_players"] = rows
