@@ -10,10 +10,9 @@ systems layered on top:
 2. Heatmap fill (opt-in via gradient=True, currently used on the
    Lineup card and the Top Plays tables) — a real colored BACKGROUND
    fill, not just colored text, scaled red (bad) -> amber (mid) ->
-   cyan (good). Text color auto-switches to dark when a fill gets
-   bright enough to need it, same as any real dashboard would do —
-   this is the "polished and professional" version, not colored text
-   on black.
+   cyan (good). Text color is always dark (BG) against the fill,
+   which stays legible across the whole red -> amber -> cyan range
+   since the fill is always applied at a light-enough opacity.
 """
 import pandas as pd
 
@@ -61,48 +60,22 @@ def _cyan(opacity: float, bold: bool = False) -> str:
     return f"color: rgba({r},{g},{b},{opacity:.2f}); background-color: {BG}; font-weight: {weight};"
 
 
-def _relative_luminance(r: int, g: int, b: int) -> float:
-    """WCAG relative luminance, with proper sRGB gamma correction —
-    not a rough weighted average, which gets bright cyan specifically
-    wrong (its zero red channel drags the simple formula way down even
-    though cyan reads as very bright to the eye)."""
-    def lin(c):
-        c = c / 255.0
-        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
-    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
-
-
-def _contrast_ratio(rgb1, rgb2) -> float:
-    l1, l2 = _relative_luminance(*rgb1), _relative_luminance(*rgb2)
-    lighter, darker = max(l1, l2), min(l1, l2)
-    return (lighter + 0.05) / (darker + 0.05)
-
-
 _BG_RGB = tuple(int(BG.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
 _TEXT_RGB = tuple(int(COLOR["text"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
 
 
 def _gradient_fill(t: float, bold: bool = False) -> str:
-    """Real colored BACKGROUND fill, not just text color. Text color
-    picks whichever of off-white/dark gives the higher real WCAG
-    contrast ratio against the ACTUAL blended background (fill color
-    mixed with the table's black at this opacity) — verified against
-    real measured contrast ratios, not a rough brightness guess (a
-    simple weighted-average heuristic gets saturated cyan specifically
-    wrong, since its zero red channel drags the average down even
-    though it reads as very bright)."""
+    """Real colored BACKGROUND fill, not just text color. Text color is
+    always dark (BG) — kept flat rather than auto-switching to white,
+    per design: every number in a gradient-filled cell reads as dark
+    text on the colored fill, consistently across red/amber/cyan."""
     r, g, b = _gradient_rgb(t)
     opacity = 0.35 + 0.40 * t
-
-    blended = tuple(round(c * opacity + bg_c * (1 - opacity)) for c, bg_c in zip((r, g, b), _BG_RGB))
-    contrast_light = _contrast_ratio(blended, _TEXT_RGB)
-    contrast_dark = _contrast_ratio(blended, _BG_RGB)
-    text_color = COLOR["text"] if contrast_light >= contrast_dark else BG
 
     weight = 700 if bold else 600
     return (
         f"background-color: rgba({r},{g},{b},{opacity:.2f}); "
-        f"color: {text_color}; font-weight: {weight}; border-radius: 3px;"
+        f"color: {BG}; font-weight: {weight}; border-radius: 3px;"
     )
 
 
@@ -185,13 +158,23 @@ def _base_styler(df: pd.DataFrame):
     reliably render in Streamlit's dataframe widget (confirmed: the
     generated CSS was correct, but the color didn't show up on
     screen), while column-level .apply() is proven to work (Bats
-    colors render correctly using this exact method)."""
+    colors render correctly using this exact method).
+
+    The index is hidden HERE, on the Styler itself (`.hide(axis=
+    "index")`), not left to st.dataframe's hide_index=True display
+    param. When a Styler is passed into st.dataframe, its per-cell
+    styles are positioned against the Styler's own column layout —
+    if the index is only hidden at the widget level, every styled
+    cell still carries the index's column slot, so colors render
+    shifted one column to the left of their real header. Hiding it on
+    the Styler itself removes that slot before any styling is applied,
+    so colors land under the header they're actually for."""
     base = df.style.set_properties(**{
         "font-family": "'JetBrains Mono', monospace",
         "font-size": "13.5px",
         "background-color": BG,
         "color": COLOR["text"],
-    }).format(precision=2)
+    }).format(precision=2).hide(axis="index")
 
     for name_col in ("Player", "Name"):
         if name_col in df.columns:
@@ -225,7 +208,7 @@ def style_stat_table(df: pd.DataFrame, favor_high=None, favor_low=None, gradient
     favor_high: column names where a HIGHER value is better
     favor_low:  column names where a LOWER value is better
     gradient:   False = cyan brightness only. True = real red/amber/cyan
-                BACKGROUND fill with auto-contrast text.
+                BACKGROUND fill with dark text.
     Player name and Bats identity colors always apply automatically,
     regardless of this table's gradient setting.
     """

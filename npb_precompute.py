@@ -56,6 +56,17 @@ STADIUMS = {
 
 OUT = Path("build_data") / "data" / "npb"
 
+# Single-kanji team abbreviations used on npb.jp's league pitching
+# leaderboards (pit_c.html / pit_p.html), e.g. "髙橋 遥人(神)" = Hanshin.
+PIT_TEAM_ABBR = {
+    "神": "Hanshin Tigers", "中": "Chunichi Dragons",
+    "デ": "Yokohama DeNA BayStars", "ヤ": "Yakult Swallows",
+    "巨": "Yomiuri Giants", "広": "Hiroshima Carp",
+    "西": "Seibu Lions", "ソ": "SoftBank Hawks",
+    "日": "Nippon-Ham Fighters", "オ": "Orix Buffaloes",
+    "ロ": "Lotte Marines", "楽": "Rakuten Eagles",
+}
+
 
 def _avg(values):
     """Simple average that never blows up on an empty list."""
@@ -85,6 +96,92 @@ def fetch_month(year: int, month: int):
         return None
 
 
+def fetch_pitcher_stats() -> dict:
+    """Season pitching lines (ERA, W-L, SV/HLD, IP, K, R/ER, etc.) from
+    npb.jp's official league leaderboards — real box-score arithmetic
+    NPB itself maintains, nothing modeled or estimated.
+
+    Covers both leagues' three leaderboard tables each (innings-qualified,
+    saves leaders, holds leaders), which together catch essentially every
+    pitcher with meaningful season usage — starters land in the
+    innings-qualified table, most high-leverage relievers in the other two.
+    A pitcher appearing in more than one table just gets overwritten with
+    an identical line, so no special de-duping logic is needed.
+
+    Keyed by the pitcher's full name as npb.jp prints it (family + given,
+    separated by a full-width space). The schedule page's starter
+    announcement only gives the family name, so callers should match by
+    team + surname prefix rather than expecting an exact key hit.
+
+    Wrapped so a failure here (site down, markup change) degrades to an
+    empty dict rather than taking down the whole NPB build — the slate
+    itself must still ship even if pitcher stats can't be fetched.
+    """
+    stats = {}
+    for url in ("https://npb.jp/bis/2026/stats/pit_c.html",
+                "https://npb.jp/bis/2026/stats/pit_p.html"):
+        try:
+            r = requests.get(url, headers=UA, timeout=25)
+            html = r.content.decode("utf-8", errors="replace") if r.status_code == 200 else None
+        except Exception:
+            html = None
+        if not html:
+            continue
+
+        for row_m in re.finditer(r'<tr class="ststats">(.*?)</tr>', html, re.S):
+            cells = re.findall(r'<td[^>]*>(.*?)</td>', row_m.group(1), re.S)
+            if len(cells) < 25:
+                continue
+            # Column order (verified against real npb.jp markup):
+            # 0 rank, 1 name+team, 2 ERA, 3 G, 4 W, 5 L, 6 SV, 7 HLD, 8 HP,
+            # 9 CG, 10 SHO, 11 no-walk, 12 win%, 13 batters, 14 IP,
+            # 15 hits, 16 HR, 17 BB, 18 IBB, 19 HBP, 20 K, 21 WP, 22 balks,
+            # 23 R, 24 ER.
+            name_cell = cells[1]
+            team_m = re.search(r'<span class="stteam">\((.)\)</span>', name_cell)
+            team_abbr = team_m.group(1) if team_m else None
+            name = _strip(re.sub(r'<span class="stteam">.*?</span>', '', name_cell))
+
+            ip_cell = cells[14]
+            ip_int = re.search(r'<span class="integer">(.*?)</span>', ip_cell)
+            ip_dec = re.search(r'<span class="decimal">(.*?)</span>', ip_cell)
+            innings = (_strip(ip_int.group(1)) if ip_int else _strip(ip_cell))
+            if ip_dec:
+                innings += _strip(ip_dec.group(1))
+
+            stats[name] = {
+                "team": PIT_TEAM_ABBR.get(team_abbr, team_abbr),
+                "era": _strip(cells[2]),
+                "games": _strip(cells[3]),
+                "wins": _strip(cells[4]),
+                "losses": _strip(cells[5]),
+                "saves": _strip(cells[6]),
+                "holds": _strip(cells[7]),
+                "innings_pitched": innings,
+                "hits_allowed": _strip(cells[15]),
+                "home_runs_allowed": _strip(cells[16]),
+                "walks": _strip(cells[17]),
+                "strikeouts": _strip(cells[20]),
+                "runs_allowed": _strip(cells[23]),
+                "earned_runs": _strip(cells[24]),
+            }
+    return stats
+
+
+def find_pitcher_stats(pitcher_stats: dict, surname: str, team: str):
+    """Match a schedule-page starter (surname only) to their full stat
+    line, scoped to the team they play for. Returns None if no real match
+    is found — never guesses across teams or fabricates a line."""
+    if not surname or not pitcher_stats:
+        return None
+    for full_name, info in pitcher_stats.items():
+        if info.get("team") != team:
+            continue
+        if full_name == surname or full_name.split('\u3000')[0] == surname:
+            return info
+    return None
+
+
 def parse_games(html: str, year: int):
     for m in re.finditer(r'<tr id="date(\d{4})"[^>]*>(.*?)</tr>', html, re.S):
         mmdd, row = m.group(1), m.group(2)
@@ -107,21 +204,28 @@ def parse_games(html: str, year: int):
         place = re.search(r'<div class="place">(.*?)</div>', row, re.S)
         time_m = re.search(r'<div class="time">\s*(\d{1,2}:\d{2})', row)
 
-        # Announced starters cell — structure inside is unverified, so this
-        # parses defensively: exactly two names -> home/away (home listed
-        # first, matching the table's team order); anything else ships as a
-        # raw "starters" string; nothing found -> TBD. The nightly log
-        # prints what it saw so the assignment can be verified against
-        # npb.jp by eye.
+        # Announced starters live in two <div class="pit"> cells in the
+        # last <td> of the row (verified against real npb.jp markup — the
+        # <td> itself carries no class, only the inner divs do). For an
+        # upcoming game each div reads "先発：<name>" (home listed first,
+        # matching team1/team2 order). For a completed game the same divs
+        # instead hold the decision pitchers, "勝：<name>" / "敗：<name>" /
+        # "分：<name>" — those are NOT necessarily the starter, so they are
+        # kept only as a raw reference string, never assigned as home/away
+        # starter. Nothing present -> TBD, never guessed.
         home_sp, away_sp, sp_raw = None, None, None
-        pit = re.search(r'<td[^>]*class="[^"]*pit[^"]*"[^>]*>(.*?)</td>', row, re.S)
-        if pit:
-            cell = re.sub(r'<br\s*/?>', '|', pit.group(1), flags=re.I)
-            names = [p for p in (_strip(x) for x in cell.split('|')) if p and p != '-']
-            if len(names) == 2:
+        pit_divs = re.findall(r'<div class="pit">(.*?)</div>', row, re.S)
+        entries = [t for t in (_strip(d) for d in pit_divs) if t]
+        if len(entries) == 2:
+            parts = [e.split('：', 1) for e in entries]
+            labels = [p[0] if len(p) == 2 else None for p in parts]
+            names = [p[1] if len(p) == 2 else p[0] for p in parts]
+            if labels[0] == '先発' and labels[1] == '先発':
                 home_sp, away_sp = names[0], names[1]
-            elif names:
-                sp_raw = ' / '.join(names)
+            else:
+                sp_raw = ' / '.join(entries)
+        elif entries:
+            sp_raw = ' / '.join(entries)
 
         yield {
             "date": f"{year}-{mmdd[:2]}-{mmdd[2:]}",
@@ -219,6 +323,13 @@ def main():
     print(f"NPB: {len(finals)} real finals parsed across the season "
           f"({len(stats)} teams with stats)")
 
+    try:
+        pitcher_stats = fetch_pitcher_stats()
+    except Exception as e:
+        pitcher_stats = {}
+        print(f"NPB: pitcher-stats fetch failed ({e}) — starters will ship without ERA/W-L/K")
+    print(f"NPB: {len(pitcher_stats)} pitchers with season stats fetched")
+
     todays = [g for g in all_games if g["date"] == today]
     games_out = []
     for g in todays:
@@ -233,8 +344,15 @@ def main():
         }
         if g.get("sp_raw"):
             entry["starters_raw"] = g["sp_raw"]
+        for side in ("away", "home"):
+            sp_surname = g.get(f"{side}_sp")
+            sp_stats = find_pitcher_stats(pitcher_stats, sp_surname, g[side])
+            if sp_stats:
+                entry[f"{side}_starter_stats"] = sp_stats
         print(f'  [verify-starters] {g["away"]} @ {g["home"]}: '
-              f'home_sp={g.get("home_sp")!r} away_sp={g.get("away_sp")!r} raw={g.get("sp_raw")!r}')
+              f'home_sp={g.get("home_sp")!r} away_sp={g.get("away_sp")!r} raw={g.get("sp_raw")!r} '
+              f'home_stats={"yes" if entry.get("home_starter_stats") else "no"} '
+              f'away_stats={"yes" if entry.get("away_starter_stats") else "no"}')
         if g["status"] == "final":
             entry["final"] = f'{g["away"]} {g["away_score"]} - {g["home_score"]} {g["home"]}'
             if g["away_score"] == g["home_score"]:
