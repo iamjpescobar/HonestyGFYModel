@@ -101,11 +101,46 @@ else:
         if g.get("final"):
             badges += badge(g["final"], "accent")
         if g.get("starters_raw"):
-            badges += badge(f'Announced starters: {g["starters_raw"]}', "neutral")
+            badges += badge(f'Pitchers: {g["starters_raw"]}', "neutral")
         else:
             badges += (badge(f'Away SP: {g.get("away_starter", "TBD")}', "neutral")
                        + badge(f'Home SP: {g.get("home_starter", "TBD")}', "neutral"))
         st.markdown(badges, unsafe_allow_html=True)
+
+        # Real season lines for the announced starters — straight from
+        # npb.jp's own leaderboards, rendered only when a confident
+        # team-scoped match exists.
+        dotsp = " \u00b7 "
+        for side in ("away", "home"):
+            sp = g.get(f"{side}_starter_stats")
+            if not sp:
+                continue
+            name = g.get(f"{side}_starter", "")
+            bits = []
+            if sp.get("era"):
+                bits.append(f'ERA {sp["era"]}')
+            if sp.get("wins") is not None and sp.get("losses") is not None:
+                bits.append(f'{sp["wins"]}-{sp["losses"]}')
+            if sp.get("innings_pitched"):
+                bits.append(f'{sp["innings_pitched"]} IP')
+            if sp.get("strikeouts"):
+                bits.append(f'{sp["strikeouts"]} K')
+            for k, lbl in (("saves", "SV"), ("holds", "HLD")):
+                v = sp.get(k)
+                if v and str(v) not in ("0", "-"):
+                    bits.append(f'{v} {lbl}')
+            if not bits:
+                continue
+            joined = dotsp.join(bits)
+            st.markdown(
+                f'<div style="display:flex; justify-content:space-between; gap:12px; '
+                f'font-size:12px; margin-top:4px;">'
+                f'<span style="font-weight:700; color:{COLOR["text"]}; white-space:nowrap;">'
+                f'{g.get(side, "")} SP \u2014 {name}</span>'
+                f'<span style="font-family:\'JetBrains Mono\',monospace; color:{COLOR["gold"]}; '
+                f'text-align:right;">{joined}</span></div>',
+                unsafe_allow_html=True,
+            )
 
         stats_html = _team_line(g, "away") + _team_line(g, "home")
         if g.get("h2h"):

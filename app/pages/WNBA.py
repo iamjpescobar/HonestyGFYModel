@@ -263,16 +263,20 @@ def _render_slate():
                             fmts = {c: "{:.1f}" for c in num_cols}
                             fmts["GP"] = "{:.0f}"
                             fmts["H2H GP"] = "{:.0f}"
+                            # The Styler already hides its own index (see
+                            # table_style._base_styler) — passing hide_index or
+                            # column_config on TOP of a Styler makes Streamlit
+                            # lay columns out against a different grid than the
+                            # styles were computed for, which is exactly the
+                            # floating/misaligned column bug. So: hand the
+                            # widget the Styler and NOTHING else that touches
+                            # column layout.
                             styled = style_stat_table(
                                 df, favor_high=["Season", "L5", "L10", "vs OPP"],
                                 gradient=True,
                             ).format(fmts, na_rep="\u2014")
-                            col_cfg = {c: st.column_config.NumberColumn(c, width=55)
-                                       for c in num_cols}
-                            col_cfg["Player"] = st.column_config.TextColumn("Player", width=150)
-                            st.dataframe(styled, width="stretch", hide_index=True,
-                                         height=40 + 36 * len(df),
-                                         column_config=col_cfg)
+                            st.dataframe(styled, width="stretch",
+                                         height=40 + 36 * len(df))
                             note = TAB_NOTES.get(label)
                             if note:
                                 st.caption(note)
