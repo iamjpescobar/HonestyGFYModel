@@ -57,6 +57,11 @@ STADIUMS = {
 OUT = Path("build_data") / "data" / "npb"
 
 
+def _avg(values):
+    """Simple average that never blows up on an empty list."""
+    return round(sum(values) / len(values), 2) if values else None
+
+
 def _en_team(jp: str) -> str:
     return TEAMS.get(jp.strip(), jp.strip())
 
