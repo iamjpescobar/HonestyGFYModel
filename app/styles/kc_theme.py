@@ -70,6 +70,20 @@ def inject_kc_theme():
     st.markdown(
         f"""
         <style>
+        /* ---------- Mobile / small screens ---------- */
+        @media (max-width: 700px) {{
+            .lc-title {{ font-size: 24px !important; }}
+            .lc-subtitle {{ font-size: 12px !important; }}
+            .block-container {{ padding-left: 0.8rem !important;
+                                padding-right: 0.8rem !important;
+                                padding-top: 2.2rem !important; }}
+            .pf-card {{ padding: 12px 12px !important; }}
+            div[data-testid="stHorizontalBlock"] {{ flex-wrap: wrap !important;
+                                                    gap: 0.4rem !important; }}
+            div[data-testid="stHorizontalBlock"] > div {{ min-width: 0 !important; }}
+            div[data-testid="stDataFrame"] {{ font-size: 11px !important; }}
+        }}
+
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
         :root {{

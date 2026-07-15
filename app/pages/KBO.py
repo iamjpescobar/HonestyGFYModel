@@ -45,7 +45,7 @@ if games is None:
 
     st.markdown(card_open("What launches first"), unsafe_allow_html=True)
     for name, desc in [
-        ("Daily Slate", "Every KBO game with starters, park, and start time (KST + ET)"),
+        ("Daily Slate", "Every NPB game with starters, park, and start time (JST + ET) - start times shown in KST and ET"),
         ("Team Profiles", "Real offense/pitching form for totals and run-line handicapping"),
         ("Starter Form", "Season and recent-start lines for the day\'s probables"),
     ]:
@@ -70,14 +70,60 @@ if generated_at:
 if not games:
     st.info("No KBO games on today\'s schedule \u2014 likely a league off-day.")
 else:
+    def _team_line(g, side):
+        """One team's real season line — only renders fields the data
+        actually contains."""
+        name = g.get(side, "TBD")
+        bits = []
+        if g.get(f"{side}_record"):
+            bits.append(f'{g[f"{side}_record"]}')
+        if g.get(f"{side}_rs_pg") is not None and g.get(f"{side}_ra_pg") is not None:
+            bits.append(f'{g[f"{side}_rs_pg"]} RS / {g[f"{side}_ra_pg"]} RA per game')
+        if g.get(f"{side}_last10"):
+            bits.append(f'L10: {g[f"{side}_last10"]}')
+        if not bits:
+            return ""
+        dot = " \u00b7 "
+        joined = dot.join(bits)
+        return (f'<div style="display:flex; justify-content:space-between; gap:12px; '
+                f'font-size:12.5px; margin-bottom:6px;">'
+                f'<span style="font-weight:700; color:{COLOR["text"]};">{name}</span>'
+                f'<span style="font-family:\'JetBrains Mono\',monospace; color:{COLOR["gold"]};">'
+                f'{joined}</span></div>')
+
     for g in games:
-        st.markdown(card_open(f'{g.get("away", "TBD")} @ {g.get("home", "TBD")}',
-                              f'{g.get("stadium", "")} \u00b7 {g.get("time_kst", "TBD")} KST / {g.get("time_et", "TBD")} ET'), unsafe_allow_html=True)
-        st.markdown(
-            badge(f'Away SP: {g.get("away_starter", "TBD")}', "neutral")
-            + badge(f'Home SP: {g.get("home_starter", "TBD")}', "neutral"),
-            unsafe_allow_html=True,
-        )
+        status = g.get("status", "scheduled")
+        subtitle = f'{g.get("stadium", "")} \u00b7 {g.get("time_kst", "TBD")} KST / {g.get("time_et", "TBD")} ET'
+        st.markdown(card_open(f'{g.get("away", "TBD")} @ {g.get("home", "TBD")}', subtitle), unsafe_allow_html=True)
+
+        status_style = {"postponed": "bad", "final": "good", "final (tie)": "good"}.get(status, "neutral")
+        badges = badge(status.upper(), status_style)
+        if g.get("final"):
+            badges += badge(g["final"], "accent")
+        if g.get("starters_raw"):
+            badges += badge(f'Announced starters: {g["starters_raw"]}', "neutral")
+        else:
+            badges += (badge(f'Away SP: {g.get("away_starter", "TBD")}', "neutral")
+                       + badge(f'Home SP: {g.get("home_starter", "TBD")}', "neutral"))
+        st.markdown(badges, unsafe_allow_html=True)
+
+        stats_html = _team_line(g, "away") + _team_line(g, "home")
+        if g.get("h2h"):
+            stats_html += (f'<div style="font-size:11.5px; color:{COLOR["gold"]}; '
+                           f'margin-top:4px;">Season H2H: {g["h2h"]}</div>')
+            det = g.get("h2h_detail") or {}
+            if det.get("avg_total") is not None:
+                stats_html += (
+                    f'<div style="font-size:11px; color:{COLOR["text"]}; margin-top:2px;">'
+                    f'H2H runs: {g.get("away")} {det.get("away_avg_runs")} R/G vs '
+                    f'{g.get("home")} {det.get("home_avg_runs")} R/G \u00b7 '
+                    f'Avg total in series: <b>{det.get("avg_total")}</b></div>')
+            if det.get("scorelines"):
+                joined = " \u00b7 ".join(det["scorelines"][:6])
+                stats_html += (f'<div style="font-size:10.5px; color:{COLOR["gold"]}; '
+                               f'opacity:0.85; margin-top:2px;">{joined}</div>')
+        if stats_html:
+            st.markdown(f'<div style="margin-top:10px;">{stats_html}</div>', unsafe_allow_html=True)
         st.markdown(card_close(), unsafe_allow_html=True)
 
 footer()

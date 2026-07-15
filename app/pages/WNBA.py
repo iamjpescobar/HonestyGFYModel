@@ -240,8 +240,10 @@ def _render_slate():
                             )
                             rows = []
                             for p in plist:
+                                pos = p.get("pos") or ""
+                                pname = f'{p.get("name")} \u00b7 {pos}' if pos else p.get("name")
                                 row = {
-                                    "Player": p.get("name"), "Pos": p.get("pos"),
+                                    "Player": pname,
                                     "GP": p.get("gp"), "MIN": p.get("min"),
                                     "Season": p.get(season_k),
                                     "L5": p.get(l5_k), "L10": p.get(l10_k),
@@ -255,7 +257,7 @@ def _render_slate():
                                     row["TO"] = p.get("to")
                                 rows.append(row)
                             df = pd.DataFrame(rows)
-                            num_cols = [c for c in df.columns if c not in ("Player", "Pos")]
+                            num_cols = [c for c in df.columns if c != "Player"]
                             for c in num_cols:
                                 df[c] = pd.to_numeric(df[c], errors="coerce")
                             fmts = {c: "{:.1f}" for c in num_cols}
@@ -265,10 +267,9 @@ def _render_slate():
                                 df, favor_high=["Season", "L5", "L10", "vs OPP"],
                                 gradient=True,
                             ).format(fmts, na_rep="\u2014")
-                            col_cfg = {c: st.column_config.NumberColumn(c, width="small")
+                            col_cfg = {c: st.column_config.NumberColumn(c, width=55)
                                        for c in num_cols}
-                            col_cfg["Player"] = st.column_config.TextColumn("Player", width="medium")
-                            col_cfg["Pos"] = st.column_config.TextColumn("Pos", width="small")
+                            col_cfg["Player"] = st.column_config.TextColumn("Player", width=150)
                             st.dataframe(styled, width="stretch", hide_index=True,
                                          height=40 + 36 * len(df),
                                          column_config=col_cfg)

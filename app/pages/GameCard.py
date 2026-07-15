@@ -7,7 +7,7 @@ EASTERN = ZoneInfo("America/New_York")
 
 from styles.kc_theme import (
     inject_kc_theme, badge, card, footer, COLOR,
-    internal_nav, pitch_color, pitch_name, edge_tag
+    sport_switcher, internal_nav, pitch_color, pitch_name, edge_tag
 )
 from styles.table_style import style_stat_table, plain_dark_table
 from auth import render_account_sidebar
@@ -23,6 +23,7 @@ from engines.savant_leaderboard import load_percentile_ranks
 from engines.slam_engine import slam_from_profile
 from engines.top_plays import rank_batters, confidence_tier, matchup_tier
 from engines.team_abbreviations import team_abbr
+from engines.matchup_grades import grade_matchup
 
 st.set_page_config(page_title="Game Card", layout="wide")
 inject_kc_theme()
@@ -326,6 +327,113 @@ with content_col:
                 st.markdown(bars_html, unsafe_allow_html=True)
             else:
                 st.caption("No arsenal data available.")
+
+    # -----------------------------------------------------
+    # MATCHUP GRADES — transparent signal checklists, both starters
+    # -----------------------------------------------------
+    grades = grade_matchup(
+        game.get("away_pitcher_id"), game.get("home_pitcher_id"),
+        game.get("away_pitcher", "Away"), game.get("home_pitcher", "Home"),
+        park_factor=park.get("park_factor"), park_verified=park.get("verified", False),
+        temp=game.get("weather_temp"),
+    )
+    with card("matchup_grades_card"):
+        st.markdown(
+            f'<div class="pf-card-title" style="color:{COLOR["gold"]};">Matchup Grades</div>'
+            f'<div class="pf-card-subtitle">This app\'s own signal checklists from real Statcast splits, '
+            f'park factor, and posted weather \u2014 formula documented in engines/matchup_grades.py. '
+            f'Not calibrated probabilities.</div>',
+            unsafe_allow_html=True,
+        )
+        if grades.get("error"):
+            st.info(grades["error"])
+        else:
+            gcol1, gcol2 = st.columns(2)
+            for gcol, key, title in ((gcol1, "ml", "Moneyline"), (gcol2, "ou", "Over / Under")):
+                with gcol:
+                    res = grades.get(key)
+                    st.markdown(f'<div style="font-weight:700; color:{COLOR["magenta_purple"]}; font-size:13px;">{title}</div>', unsafe_allow_html=True)
+                    if not res:
+                        st.caption("No qualifying signals \u2014 no lean either way.")
+                        continue
+                    if res.get("lean"):
+                        st.markdown(
+                            f'<div style="font-size:16px; font-weight:800; color:{COLOR["stat_high"]};">'
+                            f'Lean: {res["lean"]} \u00b7 Grade {res["grade"]}</div>'
+                            f'<div style="font-size:11px; color:{COLOR["gold"]};">{res["score"]}</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(f'<div style="font-size:13px; color:{COLOR["gold"]};">{res["score"]}</div>', unsafe_allow_html=True)
+                    for s in res.get("signals", []):
+                        st.markdown(f'<div style="font-size:11.5px; color:{COLOR["text"]};">\u2713 {s}</div>', unsafe_allow_html=True)
+
+    # -----------------------------------------------------
+    # BOTH STARTERS + BULLPEN — full-staff arsenal browser
+    # -----------------------------------------------------
+    def _arsenal_bars(p_data):
+        arsenal_d = p_data.get("Pitch Arsenal", {}) if p_data else {}
+        if not arsenal_d:
+            st.caption("No arsenal data available.")
+            return
+        html = ""
+        for pt, usage in sorted(arsenal_d.items(), key=lambda x: -x[1])[:6]:
+            c = pitch_color(pt)
+            html += (
+                f'<div style="margin-bottom:6px;">'
+                f'<div style="display:flex; justify-content:space-between;">'
+                f'<span style="font-size:11px; color:{c}; font-weight:600;">{pitch_name(pt)}</span>'
+                f'<span style="font-family:\'JetBrains Mono\',monospace; font-size:11px; color:{COLOR["text"]};">{usage:.1f}%</span>'
+                f'</div>'
+                f'<div style="height:5px; width:100%; background:{COLOR["surface_raised"]}; border-radius:3px;">'
+                f'<div style="height:5px; width:{min(usage,100)}%; background:{c}; border-radius:3px;"></div>'
+                f'</div></div>'
+            )
+        st.markdown(html, unsafe_allow_html=True)
+
+    with card("dual_arsenal"):
+        st.markdown(
+            f'<div class="pf-card-title" style="color:{COLOR["gold"]};">Both Starters \u2014 Arsenal Comparison</div>'
+            f'<div class="pf-card-subtitle">Real usage from each starter\'s own Statcast pitches</div>',
+            unsafe_allow_html=True,
+        )
+        ac, hc = st.columns(2)
+        for colx, sp_name, sp_id, team_label in (
+            (ac, game.get("away_pitcher", "TBD"), game.get("away_pitcher_id"), game.get("away")),
+            (hc, game.get("home_pitcher", "TBD"), game.get("home_pitcher_id"), game.get("home")),
+        ):
+            with colx:
+                st.markdown(f'<div style="font-weight:700; color:{COLOR["magenta_purple"]}; font-size:13px;">{sp_name} <span style="color:{COLOR["gold"]}; font-weight:600;">({team_abbr(team_label)})</span></div>', unsafe_allow_html=True)
+                if sp_id:
+                    _arsenal_bars(get_pitcher_statcast(sp_id))
+                else:
+                    st.caption("Starter not posted yet.")
+
+    with st.expander("\U0001F9E4 Bullpen browser \u2014 any pitcher on either staff"):
+        st.caption(
+            "Bullpen changes flip matchups. Pick any rostered pitcher to see their real "
+            "arsenal on demand \u2014 loaded only when you ask, so the page stays fast."
+        )
+        bp1, bp2 = st.columns(2)
+        for colx, team_name in ((bp1, game.get("away")), (bp2, game.get("home"))):
+            with colx:
+                st.markdown(f'<div style="font-weight:700; color:{COLOR["gold"]}; font-size:13px;">{team_name}</div>', unsafe_allow_html=True)
+                staff = [p for p in (get_live_team_roster(team_name) or []) if p.get("is_pitcher")]
+                if not staff:
+                    st.caption("Roster unavailable right now.")
+                    continue
+                pick = st.selectbox(
+                    "Pitcher", [p["name"] for p in staff],
+                    index=None, placeholder="Choose a pitcher\u2026",
+                    key=f'bp_{team_name}_{st.session_state["gc_selected_game_idx"]}',
+                    label_visibility="collapsed",
+                )
+                if pick:
+                    sel = next((p for p in staff if p["name"] == pick), None)
+                    if sel and sel.get("id"):
+                        _arsenal_bars(get_pitcher_statcast(sel["id"]))
+                    else:
+                        st.caption("No ID for that pitcher \u2014 no data to show.")
 
     # -----------------------------------------------------
     # LOAD LINEUP + SCORES (shared across everything below)

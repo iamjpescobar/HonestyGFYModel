@@ -102,6 +102,22 @@ def parse_games(html: str, year: int):
         place = re.search(r'<div class="place">(.*?)</div>', row, re.S)
         time_m = re.search(r'<div class="time">\s*(\d{1,2}:\d{2})', row)
 
+        # Announced starters cell — structure inside is unverified, so this
+        # parses defensively: exactly two names -> home/away (home listed
+        # first, matching the table's team order); anything else ships as a
+        # raw "starters" string; nothing found -> TBD. The nightly log
+        # prints what it saw so the assignment can be verified against
+        # npb.jp by eye.
+        home_sp, away_sp, sp_raw = None, None, None
+        pit = re.search(r'<td[^>]*class="[^"]*pit[^"]*"[^>]*>(.*?)</td>', row, re.S)
+        if pit:
+            cell = re.sub(r'<br\s*/?>', '|', pit.group(1), flags=re.I)
+            names = [p for p in (_strip(x) for x in cell.split('|')) if p and p != '-']
+            if len(names) == 2:
+                home_sp, away_sp = names[0], names[1]
+            elif names:
+                sp_raw = ' / '.join(names)
+
         yield {
             "date": f"{year}-{mmdd[:2]}-{mmdd[2:]}",
             "home": _en_team(home_jp), "away": _en_team(away_jp),
@@ -109,6 +125,7 @@ def parse_games(html: str, year: int):
             "time_jst": time_m.group(1) if time_m else "TBD",
             "status": status,
             "home_score": home_score, "away_score": away_score,
+            "home_sp": home_sp, "away_sp": away_sp, "sp_raw": sp_raw,
         }
 
 
@@ -151,13 +168,22 @@ def team_stats(finals: list) -> dict:
 
 
 def h2h(finals: list, a: str, b: str) -> dict:
-    """Season head-to-head between two teams, from real finals."""
+    """Season head-to-head between two teams — record, every meeting's
+    real scoreline, each team's average runs in those meetings, and the
+    average total. All arithmetic on npb.jp's own final scores."""
     a_w = b_w = ties = 0
-    for g in finals:
+    a_runs, b_runs, totals, scorelines = [], [], [], []
+    for g in sorted(finals, key=lambda x: x["date"]):
         pair = {g["home"], g["away"]}
         if pair != {a, b}:
             continue
         hs, as_ = g["home_score"], g["away_score"]
+        a_sc = as_ if g["away"] == a else hs
+        b_sc = as_ if g["away"] == b else hs
+        a_runs.append(a_sc)
+        b_runs.append(b_sc)
+        totals.append(hs + as_)
+        scorelines.append(f'{g["away"]} {g["away_score"]}-{g["home_score"]} {g["home"]} ({g["date"][5:]})')
         if hs == as_:
             ties += 1
         else:
@@ -166,7 +192,9 @@ def h2h(finals: list, a: str, b: str) -> dict:
                 a_w += 1
             else:
                 b_w += 1
-    return {"a_wins": a_w, "b_wins": b_w, "ties": ties, "games": a_w + b_w + ties}
+    return {"a_wins": a_w, "b_wins": b_w, "ties": ties, "games": a_w + b_w + ties,
+            "a_avg_runs": _avg(a_runs), "b_avg_runs": _avg(b_runs),
+            "avg_total": _avg(totals), "scorelines": scorelines}
 
 
 def main():
@@ -194,9 +222,14 @@ def main():
             "stadium": g["stadium"],
             "time_jst": g["time_jst"],
             "time_et": to_et(g["date"], g["time_jst"]),
-            "away_starter": "TBD", "home_starter": "TBD",
+            "away_starter": g.get("away_sp") or "TBD",
+            "home_starter": g.get("home_sp") or "TBD",
             "status": g["status"],
         }
+        if g.get("sp_raw"):
+            entry["starters_raw"] = g["sp_raw"]
+        print(f'  [verify-starters] {g["away"]} @ {g["home"]}: '
+              f'home_sp={g.get("home_sp")!r} away_sp={g.get("away_sp")!r} raw={g.get("sp_raw")!r}')
         if g["status"] == "final":
             entry["final"] = f'{g["away"]} {g["away_score"]} - {g["home_score"]} {g["home"]}'
             if g["away_score"] == g["home_score"]:
@@ -212,10 +245,15 @@ def main():
 
         hh = h2h(finals, g["away"], g["home"])
         if hh["games"] > 0:
-            entry["h2h"] = (f'{g["away"]} {hh["a_wins"]}'
-                            f'-{hh["b_wins"]}'
-                            f'{"-" + str(hh["ties"]) if hh["ties"] else ""} '
+            ties_bit = f'-{hh["ties"]}' if hh["ties"] else ""
+            entry["h2h"] = (f'{g["away"]} {hh["a_wins"]}-{hh["b_wins"]}{ties_bit} '
                             f'{g["home"]} (2026, {hh["games"]} games)')
+            entry["h2h_detail"] = {
+                "avg_total": hh["avg_total"],
+                "away_avg_runs": hh["a_avg_runs"],
+                "home_avg_runs": hh["b_avg_runs"],
+                "scorelines": hh["scorelines"],
+            }
         games_out.append(entry)
 
     OUT.mkdir(parents=True, exist_ok=True)

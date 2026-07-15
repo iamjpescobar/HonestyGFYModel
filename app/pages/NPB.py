@@ -100,14 +100,28 @@ else:
         badges = badge(status.upper(), status_style)
         if g.get("final"):
             badges += badge(g["final"], "accent")
-        badges += (badge(f'Away SP: {g.get("away_starter", "TBD")}', "neutral")
-                   + badge(f'Home SP: {g.get("home_starter", "TBD")}', "neutral"))
+        if g.get("starters_raw"):
+            badges += badge(f'Announced starters: {g["starters_raw"]}', "neutral")
+        else:
+            badges += (badge(f'Away SP: {g.get("away_starter", "TBD")}', "neutral")
+                       + badge(f'Home SP: {g.get("home_starter", "TBD")}', "neutral"))
         st.markdown(badges, unsafe_allow_html=True)
 
         stats_html = _team_line(g, "away") + _team_line(g, "home")
         if g.get("h2h"):
             stats_html += (f'<div style="font-size:11.5px; color:{COLOR["gold"]}; '
                            f'margin-top:4px;">Season H2H: {g["h2h"]}</div>')
+            det = g.get("h2h_detail") or {}
+            if det.get("avg_total") is not None:
+                stats_html += (
+                    f'<div style="font-size:11px; color:{COLOR["text"]}; margin-top:2px;">'
+                    f'H2H runs: {g.get("away")} {det.get("away_avg_runs")} R/G vs '
+                    f'{g.get("home")} {det.get("home_avg_runs")} R/G \u00b7 '
+                    f'Avg total in series: <b>{det.get("avg_total")}</b></div>')
+            if det.get("scorelines"):
+                joined = " \u00b7 ".join(det["scorelines"][:6])
+                stats_html += (f'<div style="font-size:10.5px; color:{COLOR["gold"]}; '
+                               f'opacity:0.85; margin-top:2px;">{joined}</div>')
         if stats_html:
             st.markdown(f'<div style="margin-top:10px;">{stats_html}</div>', unsafe_allow_html=True)
         st.markdown(card_close(), unsafe_allow_html=True)
