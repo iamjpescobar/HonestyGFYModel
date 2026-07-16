@@ -7,10 +7,9 @@ EASTERN = ZoneInfo("America/New_York")
 
 from styles.kc_theme import (
     inject_kc_theme, badge, card, footer, COLOR,
-    sport_switcher, internal_nav, pitch_color, pitch_name, edge_tag
+    sport_switcher, pitch_color, pitch_name, edge_tag
 )
 from styles.table_style import style_stat_table, plain_dark_table
-from auth import render_account_sidebar
 
 from engines.weather_engine import get_todays_games_with_weather
 from engines.park_factors import get_park_factor
@@ -27,7 +26,6 @@ from engines.matchup_grades import grade_matchup
 
 st.set_page_config(page_title="Game Card", layout="wide")
 inject_kc_theme()
-render_account_sidebar()
 
 games, games_error = get_todays_games_with_weather()
 
@@ -40,18 +38,18 @@ if not games:
     st.stop()
 
 # ---------------------------------------------------------
-# LAYOUT: persistent left view-nav + main content
-# (kept WITHIN this one page \u2014 switching views never re-picks
-# the game or pitcher, unlike Streamlit's page-level nav)
+# LAYOUT — full-width content. The old in-page right sidebar
+# (account card + Matchup/Lineups/... view radio + Glossary) is gone:
+# navigation and the Glossary now live in the single unified right
+# sidebar rendered by app.py. Only the Matchup view was ever live —
+# the other views were "coming soon" placeholders and will return as
+# real pages once they're built.
 # ---------------------------------------------------------
-NAV_ITEMS = [
-    "\U0001F3E0 Matchup", "\U0001F465 Lineups", "\U0001F3AF Pitchers",
-    "\U0001F3CF Hitters", "\U0001F4C8 Projections", "\U0001F4C9 Trends", "\U0001F514 Alerts",
-]
+view = "\U0001F3E0 Matchup"
 LIVE_VIEWS = {"\U0001F3E0 Matchup"}
 
 # -----------------------------------------------------
-# WORDMARK \u2014 spans full width, anchors brand identity without
+# WORDMARK — spans full width, anchors brand identity without
 # eating into the game carousel's fixed height (a text mark, not an
 # image, since there's no logo asset to work from yet)
 # -----------------------------------------------------
@@ -63,90 +61,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.session_state.setdefault("nav_collapsed", False)
-
-if st.session_state["nav_collapsed"]:
-    content_col, nav_col = st.columns([9.4, 0.9])
-else:
-    content_col, nav_col = st.columns([5, 1.3])
-
-with nav_col:
-    toggle_icon = "\u2630" if st.session_state["nav_collapsed"] else "\u2715"
-    if st.button(toggle_icon, key="nav_toggle_btn", help="Show sidebar" if st.session_state["nav_collapsed"] else "Hide sidebar"):
-        st.session_state["nav_collapsed"] = not st.session_state["nav_collapsed"]
-        st.rerun()
-
-    if not st.session_state["nav_collapsed"]:
-        name = st.session_state.get("name", "")
-        role = st.session_state.get("lc_role", "subscriber")
-        role_badge_color = COLOR["stat_high"] if role == "admin" else COLOR["warn"]
-        st.markdown(
-            f'<div class="pf-card" style="padding:12px 14px; margin-bottom:10px;">'
-            f'<div style="font-size:13px; font-weight:700; color:{COLOR["text"]};">{name}</div>'
-            f'<div style="display:inline-block; margin-top:6px; padding:3px 10px; border-radius:4px; '
-            f'background:{role_badge_color}22; color:{role_badge_color}; font-size:10.5px; font-weight:700; '
-            f'text-transform:uppercase; letter-spacing:0.05em;">{role}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-        view = internal_nav(NAV_ITEMS, active="\U0001F3E0 Matchup", key="gc_view_nav")
-
-        with st.expander("\U0001F4D6 Glossary"):
-            def _section(title):
-                st.markdown(
-                    f'<div style="display:inline-block; padding:3px 10px; border-radius:4px; '
-                    f'background:{COLOR["error"]}22; border:1px solid {COLOR["error"]}55; '
-                    f'color:{COLOR["error"]}; font-weight:700; font-size:10.5px; text-transform:uppercase; '
-                    f'letter-spacing:0.04em; margin:10px 0 6px 0;">{title}</div>',
-                    unsafe_allow_html=True,
-                )
-
-            _section("Colors")
-            st.markdown(
-                f'<span style="color:{COLOR["player_name"]}; font-weight:700;">Names</span> \u00b7 '
-                f'<span style="color:{COLOR["bats_l"]}; font-weight:700;">L</span>/'
-                f'<span style="color:{COLOR["bats_r"]}; font-weight:700;">R</span>/'
-                f'<span style="color:{COLOR["bats_s"]}; font-weight:700;">S</span> \u00b7 '
-                f'<span style="color:{COLOR["error"]}; font-weight:700;">weak</span>\u2192'
-                f'<span style="color:{COLOR["warn"]}; font-weight:700;">avg</span>\u2192'
-                f'<span style="color:{COLOR["stat_high"]}; font-weight:700;">strong</span>',
-                unsafe_allow_html=True,
-            )
-
-            _section("Composite Scores")
-            st.markdown(
-                "- **SLAM** \u2014 real xSLG/xwOBA power score, last 25 PA/BBE/Games. ~50 = league avg.\n"
-                "- **HR/Hit/K Score** \u2014 real MLB percentile rankings, matched by player ID.\n"
-                "- **Matchup tier** \u2014 bucketed from SLAM. **Confidence** \u2014 sample size only.\n"
-                "- **Edge tag** \u2014 from HR/Hit/K Score thresholds, see engines/top_plays.py."
-            )
-            _section("Contact Quality")
-            st.markdown(
-                "- **Brl% / HH%** \u2014 Barrel% / Hard-Hit% (95+ mph EV).\n"
-                "- **SweetSpot%** \u2014 launch angle 8\u201332\u00b0.\n"
-                "- **Blast%** \u2014 (squared-up% \u00d7 100) + bat speed \u2265 164, MLB's real formula."
-            )
-            _section("Batted Ball Direction")
-            st.markdown(
-                "- **LD% / FB% / GB%** \u2014 Line Drive / Fly Ball / Ground Ball %.\n"
-                "- **PullAir% / PullBrl%** \u2014 pulled fly balls / pulled AND barreled, real "
-                "spray-angle math (handedness-aware)."
-            )
-            _section("Plate Discipline")
-            st.markdown(
-                "- **SwStr%** \u2014 whiffs / ALL pitches. **Whiff%** \u2014 whiffs / SWINGS only "
-                "(different denominator, don't conflate them).\n"
-                "- **xSLG / xwOBA** \u2014 MLB's own expected stats from exit velo + launch angle."
-            )
-            _section("Pitcher Splits")
-            st.markdown(
-                "- **BA/SLG/ISO/WHIP/HR9** \u2014 computed from raw Statcast (IP is an estimate).\n"
-                "- **Putaway%** \u2014 K rate on 2-strike counts. **1stPS%** \u2014 first-pitch strike rate. "
-                "**Meatball%** \u2014 pitches in the heart of the zone."
-            )
-    else:
-        view = st.session_state.get("gc_view_nav", "\U0001F3E0 Matchup")
+# Plain container instead of st.columns — keeps the `with content_col:`
+# indentation below untouched while letting the page use the full width
+# app.py's main column gives it.
+content_col = st.container()
 
 with content_col:
     # -----------------------------------------------------
@@ -188,7 +106,7 @@ with content_col:
 
     st.markdown(
         f'<div style="color:{COLOR["text"]}; font-size:13px; font-weight:600; margin:4px 0 12px 0;">'
-        f'Page {page + 1} of {total_pages} \u2014 {len(games)} games today</div>',
+        f'Page {page + 1} of {total_pages} \u2014 {len(games)} game{"s" if len(games) != 1 else ""} today</div>',
         unsafe_allow_html=True,
     )
     game = games[st.session_state["gc_selected_game_idx"]]
