@@ -85,11 +85,16 @@ def get_all_teams():
 @st.cache_data(ttl=1800)
 def get_live_team_roster(team_name: str):
     """
-    Returns the live 40-man roster for a given MLB team, each entry tagged
-    with its real position so callers can filter pitchers vs. position
-    players instead of guessing from a single mixed dropdown.
+    Returns the 40-man roster for a given MLB team (via rosterType=40Man),
+    each entry tagged with its real position so callers can filter
+    pitchers vs. position players instead of guessing from a single
+    mixed dropdown. Deliberately NOT the 26-man active roster — that
+    default excludes anyone on the Injured List, optioned to the
+    minors, restricted, or suspended, which is why key/star players
+    were going missing from research pages that use this list.
     Cached for 30 minutes to avoid hammering the MLB Stats API on every
-    rerun — roster moves (trades/injuries) won't show up faster than that.
+    rerun — roster moves (trades/IL/option moves) won't show up faster
+    than that.
     Returns an empty list (rather than crashing the page) if the MLB
     Stats API is unreachable or returns something unexpected.
     """
@@ -109,7 +114,7 @@ def get_live_team_roster(team_name: str):
     if not team_id:
         return []
 
-    roster_url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster"
+    roster_url = f"https://statsapi.mlb.com/api/v1/teams/{team_id}/roster?rosterType=40Man"
     try:
         roster_data = requests.get(roster_url, timeout=10).json().get("roster", [])
     except Exception:
