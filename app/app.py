@@ -42,6 +42,7 @@ with _strip_col:
 pages = {
     "": [
         st.Page("pages/GameCard.py", title="Game Card", icon=":material/stadium:", default=True),
+        st.Page("pages/Player_Of_The_Day.py", title="Player of the Day", icon=":material/star:"),
     ],
     "Legacy Tools": [
         st.Page("pages/Model.py", title="Model", icon=":material/monitoring:"),

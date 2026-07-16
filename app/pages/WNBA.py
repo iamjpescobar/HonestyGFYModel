@@ -88,6 +88,32 @@ if games is None:
 if not games:
     st.info("No WNBA games on today's schedule \u2014 likely a league off-day or break.")
 
+if games:
+    from engines.player_of_the_day import get_wnba_player_of_the_day
+    wnba_pick, _wnba_candidates, wnba_potd_error = get_wnba_player_of_the_day()
+    if wnba_pick:
+        st.markdown(card_open(f'\u2b50 Player of the Day \u2014 {wnba_pick["name"]} ({wnba_pick["team"]})'),
+                    unsafe_allow_html=True)
+        st.caption("This app's best real recent-form pick, by the numbers \u2014 not a prediction, not a lock.")
+        potd_badges = (
+            badge(f'{wnba_pick["pos"] or "?"}', "neutral")
+            + badge(f'vs {wnba_pick["opponent"]}', "neutral")
+            + badge(f'L5 PRA {wnba_pick["l5_pra"]}', "accent")
+        )
+        st.markdown(f'<div>{potd_badges}</div>', unsafe_allow_html=True)
+        pc1, pc2, pc3, pc4 = st.columns(4)
+        pc1.metric("L5 PPG", wnba_pick["l5_ppg"] if wnba_pick["l5_ppg"] is not None else "N/A")
+        pc2.metric("L5 RPG", wnba_pick["l5_rpg"] if wnba_pick["l5_rpg"] is not None else "N/A")
+        pc3.metric("L5 APG", wnba_pick["l5_apg"] if wnba_pick["l5_apg"] is not None else "N/A")
+        pc4.metric("Season PRA", wnba_pick["season_pra"])
+        st.caption(
+            f'Real games played this season: {wnba_pick["gp"]} \u2014 ranked by real last-5-game PRA '
+            f'(points+rebounds+assists), season PRA as tiebreaker.'
+        )
+        st.markdown(card_close(), unsafe_allow_html=True)
+    elif wnba_potd_error:
+        st.caption(f"Player of the Day: {wnba_potd_error}")
+
 
 def _hex(c, fallback):
     if c and isinstance(c, str) and len(c) in (3, 6):
