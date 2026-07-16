@@ -52,6 +52,7 @@ def _render_pitching_leaders():
     if p_generated:
         st.caption(f"Pitcher data as of {p_generated} KST.")
     dotsp = " \u00b7 "
+    em_dash = "\u2014"
     for p in pitchers[:15]:
         bits = []
         if p.get("wins") is not None and p.get("losses") is not None:
@@ -67,6 +68,7 @@ def _render_pitching_leaders():
             if v and str(v) not in ("0", "-"):
                 bits.append(f'{v} {lbl}')
         joined = dotsp.join(bits)
+        era_display = p.get("era", em_dash)
         st.markdown(
             f'<div style="display:flex; justify-content:space-between; gap:12px; '
             f'font-size:12.5px; margin-bottom:6px;">'
@@ -74,7 +76,7 @@ def _render_pitching_leaders():
             f'{p.get("name", "")} <span style="color:{COLOR["gold"]}; font-weight:400;">'
             f'({p.get("team", "")})</span></span>'
             f'<span style="font-family:\'JetBrains Mono\',monospace; color:{COLOR["gold"]}; '
-            f'text-align:right;">ERA {p.get("era", "\u2014")}{dotsp}{joined}</span></div>',
+            f'text-align:right;">ERA {era_display}{dotsp}{joined}</span></div>',
             unsafe_allow_html=True,
         )
     st.markdown(card_close(), unsafe_allow_html=True)
