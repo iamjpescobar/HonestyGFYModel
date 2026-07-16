@@ -12,6 +12,7 @@ inject_kc_theme()
 render_account_sidebar()
 
 _KBO_GAMES = Path(__file__).resolve().parent.parent / "data" / "kbo" / "games.json"
+_KBO_PITCHERS = Path(__file__).resolve().parent.parent / "data" / "kbo" / "pitchers.json"
 
 page_header("KBO Analytics", "Korean Baseball Organization — game-level markets", eyebrow="IN ACTIVE DEVELOPMENT")
 
@@ -26,6 +27,57 @@ def _load_games():
         return payload.get("games", []), payload.get("generated_at_kst")
     except Exception:
         return None, None
+
+
+def _load_pitchers():
+    """Reads the real official-KBO pitching leaderboard produced by the
+    nightly pipeline. Returns (pitchers, generated_at) or ([], None) when
+    it hasn't shipped yet — never fabricated."""
+    try:
+        payload = json.loads(_KBO_PITCHERS.read_text())
+        return payload.get("pitchers", []), payload.get("generated_at_kst")
+    except Exception:
+        return [], None
+
+
+def _render_pitching_leaders():
+    """Real season pitching lines straight from the official KBO
+    leaderboard — shown independent of today's slate so pitcher data is
+    always available, even on an off-day or if the slate fetch hiccups."""
+    pitchers, p_generated = _load_pitchers()
+    if not pitchers:
+        return
+    st.markdown(card_open("KBO Pitching Leaders", "Real 2026 season lines \u2014 official KBO leaderboard"),
+                unsafe_allow_html=True)
+    if p_generated:
+        st.caption(f"Pitcher data as of {p_generated} KST.")
+    dotsp = " \u00b7 "
+    for p in pitchers[:15]:
+        bits = []
+        if p.get("wins") is not None and p.get("losses") is not None:
+            bits.append(f'{p["wins"]}-{p["losses"]}')
+        if p.get("innings_pitched"):
+            bits.append(f'{p["innings_pitched"]} IP')
+        if p.get("strikeouts") is not None:
+            bits.append(f'{p["strikeouts"]} K')
+        if p.get("whip") is not None:
+            bits.append(f'{p["whip"]} WHIP')
+        for k, lbl in (("saves", "SV"), ("holds", "HLD")):
+            v = p.get(k)
+            if v and str(v) not in ("0", "-"):
+                bits.append(f'{v} {lbl}')
+        joined = dotsp.join(bits)
+        st.markdown(
+            f'<div style="display:flex; justify-content:space-between; gap:12px; '
+            f'font-size:12.5px; margin-bottom:6px;">'
+            f'<span style="font-weight:700; color:{COLOR["text"]}; white-space:nowrap;">'
+            f'{p.get("name", "")} <span style="color:{COLOR["gold"]}; font-weight:400;">'
+            f'({p.get("team", "")})</span></span>'
+            f'<span style="font-family:\'JetBrains Mono\',monospace; color:{COLOR["gold"]}; '
+            f'text-align:right;">ERA {p.get("era", "\u2014")}{dotsp}{joined}</span></div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown(card_close(), unsafe_allow_html=True)
 
 
 games, generated_at = _load_games()
@@ -58,6 +110,7 @@ if games is None:
         )
     st.markdown(card_close(), unsafe_allow_html=True)
     st.markdown(badge("MLB \u2014 live now", "good") + badge("KBO \u2014 in development", "accent"), unsafe_allow_html=True)
+    _render_pitching_leaders()
     footer()
     st.stop()
 
@@ -66,6 +119,8 @@ if games is None:
 # ------------------------------------------------------------
 if generated_at:
     st.caption(f"Slate data as of {generated_at} KST \u2014 refreshed by the nightly pipeline.")
+
+_render_pitching_leaders()
 
 if not games:
     st.info("No KBO games on today\'s schedule \u2014 likely a league off-day.")

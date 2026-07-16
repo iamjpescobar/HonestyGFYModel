@@ -21,7 +21,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pybaseball pandas pyarrow requests
+        run: pip install pybaseball pandas pyarrow requests lxml
 
       - name: Fetch NPB slate (real npb.jp data)
         run: python npb_precompute.py || echo "NPB fetch failed - continuing without it"
