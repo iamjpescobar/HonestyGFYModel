@@ -281,18 +281,18 @@ if selected_sport == "MLB":
         _hover = COLOR["text"]
         st.markdown(
             "<style>"
-            ".st-key-lc_nav_radio [role='radiogroup'] label > *:first-child {"
+            "div[role='radiogroup'][aria-label='Navigation'] label > div:not(:last-child) {"
             "  display: none !important; }"
-            ".st-key-lc_nav_radio [role='radiogroup'] label {"
-            "  display: flex !important; width: 100% !important;"
-            "  padding: 8px 12px !important; margin: 0 !important;"
+            "div[role='radiogroup'][aria-label='Navigation'] label {"
+            "  display: flex !important; align-items: center !important;"
+            "  width: 100% !important; padding: 8px 12px !important; margin: 0 !important;"
             "  border-left: 2px solid transparent !important; border-radius: 0 !important;"
             "  cursor: pointer; transition: background 0.15s; }"
-            ".st-key-lc_nav_radio [role='radiogroup'] label:hover {"
+            "div[role='radiogroup'][aria-label='Navigation'] label:hover {"
             f"  background: {_hover}0D !important; }}"
-            ".st-key-lc_nav_radio [role='radiogroup'] label:has(input:checked) {"
+            "div[role='radiogroup'][aria-label='Navigation'] label:has(input:checked) {"
             f"  background: {_rail}1A !important; border-left-color: {_rail} !important; }}"
-            ".st-key-lc_nav_radio [role='radiogroup'] label:has(input:checked) p {"
+            "div[role='radiogroup'][aria-label='Navigation'] label:has(input:checked) p {"
             f"  color: {_rail} !important; font-weight: 600 !important; }}"
             "</style>",
             unsafe_allow_html=True,
