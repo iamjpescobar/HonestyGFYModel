@@ -16,7 +16,7 @@ import py_compile
 
 from streamlit.testing.v1 import AppTest
 
-PAGES = sorted(glob.glob("pages/*.py"))
+PAGES = sorted(glob.glob("views/*.py"))
 
 
 def test_page(path, as_admin=True):

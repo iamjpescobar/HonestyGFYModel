@@ -15,6 +15,10 @@ This file:
 - Ensures admin pages and controls are only included when is_admin()
   returns True.
 - Loads page modules by running their file when selected from the sidebar.
+- Page files live in views/ (NOT pages/) on purpose: Streamlit auto-registers
+  any pages/ folder as native multipage nav with public URL routes, which both
+  drew its own left sidebar on the login screen and let visitors reach every
+  page without authenticating. views/ is invisible to that convention.
 """
 import runpy
 from pathlib import Path
@@ -89,19 +93,19 @@ with _strip_col:
 # -------------------------
 def build_mlb_pages(include_admin: bool):
     pages = [
-        ("Game Card", "pages/GameCard.py"),
-        ("Player of the Day", "pages/Player_Of_The_Day.py"),
-        ("Model", "pages/Model.py"),
-        ("Pitcher Report", "pages/1_Pitcher_Report.py"),
-        ("Pitcher Splits", "pages/1_Pitcher_Splits.py"),
-        ("Pitch Mix Splits", "pages/2_Pitch_Mix_Splits.py"),
-        ("Lineup Analysis", "pages/2_Lineup_Analysis.py"),
-        ("Team Tools", "pages/3_Team_Tools.py"),
-        ("KC Lineup Dashboard", "pages/KC_Page.py"),
+        ("Game Card", "views/GameCard.py"),
+        ("Player of the Day", "views/Player_Of_The_Day.py"),
+        ("Model", "views/Model.py"),
+        ("Pitcher Report", "views/1_Pitcher_Report.py"),
+        ("Pitcher Splits", "views/1_Pitcher_Splits.py"),
+        ("Pitch Mix Splits", "views/2_Pitch_Mix_Splits.py"),
+        ("Lineup Analysis", "views/2_Lineup_Analysis.py"),
+        ("Team Tools", "views/3_Team_Tools.py"),
+        ("KC Lineup Dashboard", "views/KC_Page.py"),
     ]
 
     if include_admin:
-        pages.append(("Debug Roster (Admin)", "pages/0_Debug_Roster.py"))
+        pages.append(("Debug Roster (Admin)", "views/0_Debug_Roster.py"))
 
     return pages
 
@@ -109,26 +113,38 @@ def build_mlb_pages(include_admin: bool):
 # Non-MLB sport page loader
 # -------------------------
 SPORT_PAGES = {
-    "KBO": "pages/KBO.py",
-    "WNBA": "pages/WNBA.py",
-    "NPB": "pages/NPB.py",
-    "NFL": "pages/NFL.py",
-    "NBA": "pages/NBA.py",
-    "NHL": "pages/NHL.py",
+    "KBO": "views/KBO.py",
+    "WNBA": "views/WNBA.py",
+    "NPB": "views/NPB.py",
+    "NFL": "views/NFL.py",
+    "NBA": "views/NBA.py",
+    "NHL": "views/NHL.py",
 }
 
 
 def load_page_module(rel_path: str):
-    """Executes a sport page file in-place. Pages must NOT call
-    st.set_page_config — it's already set once above for the whole app."""
+    """Executes a view file in-place.
+
+    Several views (GameCard, KBO, KC_Page, the sport stubs) still call
+    st.set_page_config at the top — legal back when Streamlit ran them
+    as standalone pages, but fatal now that they only ever execute via
+    runpy inside this already-configured app (set_page_config may only
+    be called once, as the first Streamlit command). Rather than chase
+    that call out of every current and future view, it's swapped for a
+    no-op for the duration of the view's execution — same shim approach
+    used for st.sidebar above."""
     page_path = Path(__file__).parent / rel_path
     if not page_path.exists():
         st.error(f"Page not found: {rel_path}")
         return
+    real_set_page_config = st.set_page_config
+    st.set_page_config = _lc_no_op
     try:
         runpy.run_path(str(page_path), run_name="__main__")
     except Exception as e:
         st.exception(e)
+    finally:
+        st.set_page_config = real_set_page_config
 
 # -------------------------
 # Minimal responsive CSS injection

@@ -9,6 +9,8 @@ but please verify it actually returns weather once you run this in
 your Codespace — if a field comes back empty, MLB simply may not have
 posted weather for that game yet (common for games more than a day out).
 """
+import json
+
 import requests
 import streamlit as st
 from datetime import datetime
@@ -22,15 +24,36 @@ from zoneinfo import ZoneInfo
 EASTERN = ZoneInfo("America/New_York")
 
 
-@st.cache_data(ttl=900)
 def get_todays_games_with_weather(date_str: str = None):
     """
-    Returns today's (or a given date's) games with venue, start time,
-    and weather condition/temp/wind if MLB has posted it yet.
-    date_str: 'YYYY-MM-DD', defaults to today (US Eastern).
+    Returns (games, error) for today's (or a given date's) slate with
+    venue, start time, and weather condition/temp/wind if MLB has
+    posted it yet. date_str: 'YYYY-MM-DD', defaults to today (US Eastern).
+
+    Thin uncached wrapper: the cached layer below returns a JSON STRING,
+    which this parses back into Python. A str always pickles, so
+    st.cache_data's UnserializableReturnValueError is structurally
+    impossible no matter what shape the MLB API returns.
     """
     if date_str is None:
         date_str = datetime.now(EASTERN).strftime("%Y-%m-%d")
+    try:
+        payload = json.loads(_fetch_todays_games_json(date_str))
+    except Exception as e:
+        return [], f"Schedule cache error: {e}"
+    return payload.get("games") or [], payload.get("error")
+
+
+@st.cache_data(ttl=900)
+def _fetch_todays_games_json(date_str: str) -> str:
+    """Cached fetch. Returns json.dumps({"games": [...], "error": ...})
+    with default=str, so any non-JSON-native value that ever slips past
+    the _clean() scrubbing below is coerced to its string form instead
+    of blowing up the cache write. Keyed on date_str (now always passed
+    explicitly) so each slate date caches separately."""
+
+    def _done(games, error):
+        return json.dumps({"games": games, "error": error}, default=str)
 
     url = "https://statsapi.mlb.com/api/v1/schedule"
     params = {
@@ -42,7 +65,7 @@ def get_todays_games_with_weather(date_str: str = None):
     try:
         resp = requests.get(url, params=params, timeout=10).json()
     except Exception as e:
-        return [], f"Schedule request failed: {e}"
+        return _done([], f"Schedule request failed: {e}")
 
     # Defensive: st.cache_data pickles whatever this function returns, so
     # every field below is forced to a plain str/int/None rather than
@@ -67,7 +90,7 @@ def get_todays_games_with_weather(date_str: str = None):
     try:
         games_list = resp.get("dates", [{}])[0].get("games", []) if resp.get("dates") else []
     except Exception as e:
-        return [], f"Unexpected schedule response shape: {e}"
+        return _done([], f"Unexpected schedule response shape: {e}")
 
     games = []
     try:
@@ -99,9 +122,9 @@ def get_todays_games_with_weather(date_str: str = None):
                 "weather_wind": _clean(weather.get("wind")),
             })
     except Exception as e:
-        return [], f"Unexpected game data shape: {e}"
+        return _done([], f"Unexpected game data shape: {e}")
 
-    return games, None
+    return _done(games, None)
 
 
 def _fetch_weather_from_feed(game_pk):

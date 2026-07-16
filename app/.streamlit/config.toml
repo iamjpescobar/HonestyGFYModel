@@ -24,3 +24,9 @@ font = "monospace"
 # only be controlled here, not via CSS.
 dataframeBorderColor = "#0a0d10"
 dataframeHeaderBackgroundColor = "#0a0d10"
+
+# Defense-in-depth: even if a pages/ folder ever reappears, never let
+# Streamlit draw its own multipage sidebar (it renders before our auth
+# gate and CSS run, and exposed every page pre-login).
+[client]
+showSidebarNavigation = false
