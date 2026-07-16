@@ -128,7 +128,7 @@ def _render_slate():
     live = _live_overrides()
     any_live = False
 
-    for g in games:
+    for gi, g in enumerate(games):
         away, home = g.get("away", "TBD"), g.get("home", "TBD")
         a_col = _hex(g.get("away_color"), COLOR["stat_high"])
         h_col = _hex(g.get("home_color"), COLOR["stat_high"])
@@ -227,6 +227,7 @@ def _render_slate():
                       "is graded on team form. Formula documented in "
                       "engines/matchup_grades_intl.py. Not calibrated probabilities."),
             source_line="Source: real WNBA box-score-derived team stats.",
+            key=f'wnba_{gi}_{away}_{home}',
         )
 
         if g.get("away_players") or g.get("home_players"):

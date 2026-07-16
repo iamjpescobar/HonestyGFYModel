@@ -253,7 +253,7 @@ else:
         return (f'<div style="font-size:11px; color:{COLOR["gold"]}; opacity:0.9; margin-top:2px;">'
                 f'Official: {DOT.join(bits)}</div>')
 
-    for g in games:
+    for gi, g in enumerate(games):
         status = g.get("status", "scheduled")
         subtitle = f'{g.get("stadium", "")} \u00b7 {g.get("time_kst", "TBD")} KST / {g.get("time_et", "TBD")} ET'
         st.markdown(card_open(f'{g.get("away", "TBD")} @ {g.get("home", "TBD")}', subtitle), unsafe_allow_html=True)
@@ -316,6 +316,7 @@ else:
                       "No probable-starter data in this pipeline yet, so this is graded on team "
                       "form rather than starter vs. starter. Not calibrated probabilities."),
             source_line="Source: official KBO leaderboards \u00b7 team form.",
+            key=f'kbo_{gi}_{g.get("away","")}_{g.get("home","")}',
         )
 
 footer()

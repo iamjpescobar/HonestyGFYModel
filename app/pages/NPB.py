@@ -92,7 +92,7 @@ else:
                 f'<span style="font-family:\'JetBrains Mono\',monospace; color:{COLOR["gold"]};">'
                 f'{joined}</span></div>')
 
-    for g in games:
+    for gi, g in enumerate(games):
         status = g.get("status", "scheduled")
         subtitle = f'{g.get("stadium", "")} \u00b7 {g.get("time_jst", "TBD")} JST / {g.get("time_et", "TBD")} ET'
         st.markdown(card_open(f'{g.get("away", "TBD")} @ {g.get("home", "TBD")}', subtitle), unsafe_allow_html=True)
@@ -170,6 +170,7 @@ else:
                       "real stat line, team form otherwise. Formula documented in "
                       "engines/matchup_grades_intl.py. Not calibrated probabilities."),
             source_line="Source: npb.jp official leaderboards \u00b7 starter or team form.",
+            key=f'npb_{gi}_{g.get("away","")}_{g.get("home","")}',
         )
 
 footer()

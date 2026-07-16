@@ -381,11 +381,14 @@ def grade_wnba_matchup(g):
 # Grades panel, reused so KBO/NPB/WNBA don't each hand-roll their own.
 # =====================================================================
 
-def render_matchup_grades_card(grades, subtitle, source_line):
+def render_matchup_grades_card(grades, subtitle, source_line, key):
+    """`key` must be unique per call on a page that renders more than
+    one of these (e.g. one per game in a daily slate) — Streamlit's
+    container needs a unique key or it raises StreamlitDuplicateElementKey."""
     import streamlit as st
     from styles.kc_theme import card, COLOR
 
-    with card("matchup_grades_card"):
+    with card(f"matchup_grades_card_{key}"):
         st.markdown(
             f'<div class="pf-card-title" style="color:{COLOR["gold"]};">Matchup Grades</div>'
             f'<div class="pf-card-subtitle">{subtitle}</div>',
