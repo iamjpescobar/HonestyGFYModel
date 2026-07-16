@@ -1,4 +1,5 @@
 streamlit==1.59.2
+pandas==2.2.3
 pybaseball
 requests
 beautifulsoup4
