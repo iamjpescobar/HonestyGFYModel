@@ -627,6 +627,9 @@ def get_pitcher_advanced_splits(pitcher_id, side: str = None) -> dict:
         # Estimated IP (out events / 3) — the same figure WHIP/HR9/K9
         # above are already built on; now exposed instead of discarded.
         "IP": round(innings_pitched, 1),
+        # Distinct games in the sample — the K projection board divides
+        # season IP by this to get innings per start.
+        "_games": int(df["game_pk"].nunique()) if "game_pk" in df.columns else 0,
         "BA": ba, "SLG": slg, "ISO": iso, "WHIP": whip, "HR": int(home_runs), "HR/9": hr9,
         "BB%": bb_pct, "K%": k_pct, "Whiff%": whiff_pct, "SwStr%": swstr_pct, "K/9": k9,
         "Putaway%": putaway_pct, "1stPS%": first_pitch_strike_pct, "Meatball%": meatball_pct,

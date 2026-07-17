@@ -81,6 +81,7 @@ with _strip_col:
 def build_mlb_pages(include_admin: bool):
     pages = [
         ("Game Card", "views/GameCard.py"),
+        ("Strikeout Board", "views/Strikeout_Board.py"),
         ("Player of the Day", "views/Player_Of_The_Day.py"),
         ("Model", "views/Model.py"),
         ("Pitcher Report", "views/1_Pitcher_Report.py"),
