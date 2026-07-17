@@ -539,6 +539,7 @@ def get_pitcher_advanced_splits(pitcher_id, side: str = None) -> dict:
                   1.5-3.5 ft plate_z), as % of all pitches
     """
     empty = {
+        "IP": 0.0,
         "BA": 0.0, "SLG": 0.0, "ISO": 0.0, "WHIP": 0.0, "HR": 0, "HR/9": 0.0,
         "BB%": 0.0, "K%": 0.0, "Whiff%": 0.0, "SwStr%": 0.0, "K/9": 0.0,
         "Putaway%": 0.0, "1stPS%": 0.0, "Meatball%": 0.0, "_error": None,
@@ -623,6 +624,9 @@ def get_pitcher_advanced_splits(pitcher_id, side: str = None) -> dict:
         meatball_pct = round(in_heart.sum() / total_pitches * 100, 1) if total_pitches > 0 else 0.0
 
     return {
+        # Estimated IP (out events / 3) — the same figure WHIP/HR9/K9
+        # above are already built on; now exposed instead of discarded.
+        "IP": round(innings_pitched, 1),
         "BA": ba, "SLG": slg, "ISO": iso, "WHIP": whip, "HR": int(home_runs), "HR/9": hr9,
         "BB%": bb_pct, "K%": k_pct, "Whiff%": whiff_pct, "SwStr%": swstr_pct, "K/9": k9,
         "Putaway%": putaway_pct, "1stPS%": first_pitch_strike_pct, "Meatball%": meatball_pct,

@@ -289,6 +289,20 @@ with content_col:
     # -----------------------------------------------------
     # BOTH STARTERS + BULLPEN — full-staff arsenal browser
     # -----------------------------------------------------
+    def _bullpen_opponent_batters(gpk, team_label, side):
+        """Light lineup fetch for the bullpen browser, same honest
+        fallback order as the main lineup section but without the
+        banners: today's confirmed lineup -> real starting 9 from the
+        team's last game -> roster. Returns (batters, source_label)."""
+        lineup, ok = get_confirmed_lineup(gpk, side)
+        if ok:
+            return [p for p in lineup if not p.get("is_pitcher")], "today's confirmed lineup"
+        last, last_date, ok2 = get_last_starting_lineup(team_label)
+        if ok2:
+            return [p for p in last if not p.get("is_pitcher")], f"real starting 9 from their last game ({last_date})"
+        roster_p = get_live_team_roster(team_label) or []
+        return [p for p in roster_p if not p.get("is_pitcher")][:9], "team roster (no lineup posted yet)"
+
     def _arsenal_bars(p_data):
         arsenal_d = p_data.get("Pitch Arsenal", {}) if p_data else {}
         if not arsenal_d:
@@ -349,7 +363,51 @@ with content_col:
                 if pick:
                     sel = next((p for p in staff if p["name"] == pick), None)
                     if sel and sel.get("id"):
-                        _arsenal_bars(get_pitcher_statcast(sel["id"]))
+                        bp_data = get_pitcher_statcast(sel["id"])
+                        _arsenal_bars(bp_data)
+                        # Opposing lineup vs this arsenal — same real
+                        # engine the starter's pitch-matchup stat uses
+                        # (get_batter_vs_pitch_types), pointed at this
+                        # reliever's top 3 pitches.
+                        bp_arsenal = bp_data.get("Pitch Arsenal", {}) if bp_data else {}
+                        bp_top3 = [pt for pt, _u in sorted(bp_arsenal.items(), key=lambda x: -x[1])[:3]]
+                        if bp_top3:
+                            opp_label = game.get("home") if team_name == game.get("away") else game.get("away")
+                            opp_side = "home" if opp_label == game.get("home") else "away"
+                            opp_batters, opp_src = _bullpen_opponent_batters(game.get("game_pk"), opp_label, opp_side)
+                            if opp_batters:
+                                bp_rows = []
+                                for ob in opp_batters[:9]:
+                                    vs = get_batter_vs_pitch_types(ob.get("id"), bp_top3, window="season", unit="bbe")
+                                    bp_rows.append({
+                                        "Player": ob.get("name", "?"),
+                                        "Brl %": vs.get("Brl %"),
+                                        "HH %": vs.get("HH %"),
+                                        "Whiff %": vs.get("Whiff %"),
+                                        "SwStr %": vs.get("SwStr %"),
+                                        "Pitches": vs.get("_pitches_seen", 0),
+                                    })
+                                bp_names = ", ".join(pitch_name(p) for p in bp_top3)
+                                st.markdown(
+                                    f'<div style="font-size:11px; font-weight:700; color:{COLOR["gold"]}; '
+                                    f'margin-top:10px;">{opp_label} vs this arsenal ({bp_names})</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                st.dataframe(
+                                    style_stat_table(
+                                        pd.DataFrame(bp_rows).set_index("Player"),
+                                        favor_high=["Brl %", "HH %"],
+                                        favor_low=["Whiff %", "SwStr %"],
+                                        gradient=True,
+                                    ),
+                                    width="stretch",
+                                )
+                                st.caption(
+                                    f"Season numbers vs those pitch types only \u2014 blue rows are the "
+                                    f"batters who punish this stuff, red rows are the ones it beats. "
+                                    f"Lineup source: {opp_src}. A small Pitches count means a small "
+                                    f"sample \u2014 read those rows gently."
+                                )
                     else:
                         st.caption("No ID for that pitcher \u2014 no data to show.")
 
@@ -495,7 +553,7 @@ with content_col:
     if view == "\U0001F3E0 Matchup":
         st.markdown(
             f'<div class="pf-card-title" style="margin-top:6px; color:{COLOR["gold"]};">Splits</div>'
-            f'<div class="pf-card-subtitle" style="color:{COLOR["magenta_purple"]};">Blue = favorable for batter, red = favorable for pitcher</div>',
+            f'<div class="pf-card-subtitle" style="color:{COLOR["magenta_purple"]};">Blue = favorable for batter, red = favorable for pitcher \u00b7 IP estimated from Statcast out events (no official box-score feed)</div>',
             unsafe_allow_html=True,
         )
         splits_overall = get_pitcher_advanced_splits(pitcher_id) if pitcher_id else None
@@ -504,7 +562,7 @@ with content_col:
 
         if rows:
             full_df = pd.DataFrame(rows).T
-            stats_cols = ["BA", "SLG", "ISO", "WHIP", "HR", "HR/9"]
+            stats_cols = ["IP", "BA", "SLG", "ISO", "WHIP", "HR", "HR/9"]
             strikes_cols = ["BB%", "Whiff%", "K%", "Putaway%", "SwStr%", "K/9", "1stPS%", "Meatball%"]
             g1, g2 = st.columns(2)
             with g1:
