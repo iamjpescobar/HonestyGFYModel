@@ -13,6 +13,19 @@ from engines.matchup_grades_intl import grade_wnba_matchup, render_matchup_grade
 # NOTE: no st.set_page_config here — app.py already sets it once.
 
 inject_kc_theme()
+
+# Prop-tab styling — match the MLB page's language: JetBrains Mono,
+# gold idle tabs, teal active tab + underline.
+st.markdown(
+    "<style>"
+    ".stTabs [data-baseweb='tab-list'] { gap: 2px; }"
+    ".stTabs [data-baseweb='tab'] { font-family: 'JetBrains Mono', monospace; }"
+    f".stTabs [data-baseweb='tab'] p {{ font-size: 12px; color: {COLOR['gold']}; }}"
+    f".stTabs [aria-selected='true'] p {{ color: {COLOR['stat_high']} !important; font-weight: 700; }}"
+    f".stTabs [data-baseweb='tab-highlight'] {{ background-color: {COLOR['stat_high']}; }}"
+    "</style>",
+    unsafe_allow_html=True,
+)
 render_account_sidebar()
 
 _WNBA_GAMES = Path(__file__).resolve().parent.parent / "data" / "wnba" / "games.json"
@@ -264,11 +277,13 @@ def _render_slate():
 
         if g.get("away_players") or g.get("home_players"):
             with st.expander(f'\U0001F3C0 Prop research \u2014 {away} @ {home}'):
-                st.caption(
-                    "Real box-score data. Season / L5 / L10 = averages over all, last 5, "
-                    "and last 10 games played. vs OPP = this player's real averages in "
-                    "this season's meetings with tonight's opponent (H2H GP = how many). "
-                    "Small samples are shown as small samples \u2014 judge accordingly."
+                st.markdown(
+                    f'<div class="pf-card-subtitle" style="color:{COLOR["magenta_purple"]}; margin-bottom:4px;">'
+                    f'Real box-score data \u00b7 Season / L5 / L10 = averages over all, last 5, and last 10 '
+                    f'games played \u00b7 vs OPP = this player\'s real averages in this season\'s meetings '
+                    f'with tonight\'s opponent (H2H GP = how many) \u00b7 small samples are shown as small '
+                    f'samples \u2014 judge accordingly</div>',
+                    unsafe_allow_html=True,
                 )
                 tabs = st.tabs([t[0] for t in PROP_TABS])
                 for tab, (label, season_k, l5_k, l10_k, h2h_k) in zip(tabs, PROP_TABS):
@@ -278,8 +293,10 @@ def _render_slate():
                             if not plist:
                                 continue
                             st.markdown(
-                                f'<div style="font-weight:700; color:{col}; '
-                                f'font-size:13px; margin:6px 0 2px 0;">{g.get(side, "")}</div>',
+                                f'<div style="display:inline-block; padding:3px 10px; border-radius:4px; '
+                                f'background:{col}22; border:1px solid {col}55; color:{col}; '
+                                f'font-weight:700; font-size:11px; text-transform:uppercase; '
+                                f'letter-spacing:0.05em; margin:12px 0 4px 0;">{g.get(side, "")}</div>',
                                 unsafe_allow_html=True,
                             )
                             rows = []
@@ -316,7 +333,7 @@ def _render_slate():
                             # widget the Styler and NOTHING else that touches
                             # column layout.
                             styled = style_stat_table(
-                                df, favor_high=["Season", "L5", "L10", "vs OPP"],
+                                df, favor_high=["MIN", "Season", "L5", "L10", "vs OPP"],
                                 gradient=True,
                             ).format(fmts, na_rep="\u2014")
                             st.dataframe(styled, width="stretch",
