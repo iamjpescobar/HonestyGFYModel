@@ -281,7 +281,10 @@ if selected_sport == "MLB":
         _hover = COLOR["text"]
         st.markdown(
             "<style>"
-            "div[role='radiogroup'][aria-label='Navigation'] label > div > div:not(:has(p)) {"
+            "div[role='radiogroup'][aria-label='Navigation'] label > div > :not(:has(p)):not(p) {"
+            "  display: none !important; }"
+            "div[role='radiogroup'][aria-label='Navigation'] label *::before,"
+            "div[role='radiogroup'][aria-label='Navigation'] label *::after {"
             "  display: none !important; }"
             "div[role='radiogroup'][aria-label='Navigation'] label {"
             "  display: flex !important; align-items: center !important;"
