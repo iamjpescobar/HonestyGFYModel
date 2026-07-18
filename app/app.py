@@ -10,11 +10,12 @@ This file:
 - The Game Card no longer renders its own sidebar; pages get the full
   width of the main column.
 - Never reassigns st.sidebar (doing so corrupts every st.cache_data
-  write — see the note above _lc_no_op). The native sidebar is
+  write — see the hard rule below). The native sidebar is
   suppressed via the views/ folder name, config.toml, and CSS instead.
 - Ensures admin pages and controls are only included when is_admin()
   returns True.
-- Loads page modules by running their file when selected from the sidebar.
+- Loads page modules by running their file when selected from the sidebar
+  (plain runpy — no monkeypatching around it; see the hard rule below).
 - Page files live in views/ (NOT pages/) on purpose: Streamlit auto-registers
   any pages/ folder as native multipage nav with public URL routes, which both
   drew its own left sidebar on the login screen and let visitors reach every
@@ -49,21 +50,16 @@ except Exception:
     user_is_admin = bool(force_admin_env)
 
 # -------------------------
-# No-op helper (used to temporarily disable st.set_page_config while
-# view modules execute — see load_page_module).
-#
-# NOTE: this app must NEVER reassign st.sidebar (the old _HiddenSidebar
-# shim). Streamlit's st.cache_data reads an id off st.sidebar when it
-# writes ANY cache entry; a shimmed sidebar hands back a function
-# object, pickle chokes on it, and every cached function in the app
-# dies with UnserializableReturnValueError for subscriber sessions.
-# The native sidebar is already fully handled the right way: the
-# views/ folder isn't auto-registered as pages, config.toml sets
-# client.showSidebarNavigation = false, and the CSS below hides
-# [data-testid="stSidebar"] as a final backstop.
+# HARD RULE for this app: NEVER monkeypatch attributes on the shared
+# `streamlit` module (st.sidebar, st.set_page_config, anything). The
+# module is global to the server process and shared by EVERY session —
+# a temporary swap in one session races every other session. This has
+# now bitten twice: the st.sidebar shim corrupted every st.cache_data
+# write, and a set_page_config no-op swap intermittently stripped other
+# sessions' page config (default centered layout, "Streamlit" tab
+# title). Views may call st.set_page_config themselves — repeat calls
+# are legal on this Streamlit version and simply re-apply.
 # -------------------------
-def _lc_no_op(*args, **kwargs):
-    return None
 
 # -------------------------
 # Sport selection — top-level sport switcher (always visible)
@@ -111,28 +107,18 @@ SPORT_PAGES = {
 
 
 def load_page_module(rel_path: str):
-    """Executes a view file in-place.
-
-    Several views (GameCard, KBO, KC_Page, the sport stubs) still call
-    st.set_page_config at the top — legal back when Streamlit ran them
-    as standalone pages, but fatal now that they only ever execute via
-    runpy inside this already-configured app (set_page_config may only
-    be called once, as the first Streamlit command). Rather than chase
-    that call out of every current and future view, it's swapped for a
-    no-op for the duration of the view's execution — same shim approach
-    used for st.sidebar above."""
+    """Executes a view file in-place with plain runpy — nothing patched
+    around it. Views may call st.set_page_config themselves; repeat
+    calls are legal on this Streamlit version and simply re-apply
+    (page title updates per view, layout stays wide)."""
     page_path = Path(__file__).parent / rel_path
     if not page_path.exists():
         st.error(f"Page not found: {rel_path}")
         return
-    real_set_page_config = st.set_page_config
-    st.set_page_config = _lc_no_op
     try:
         runpy.run_path(str(page_path), run_name="__main__")
     except Exception as e:
         st.exception(e)
-    finally:
-        st.set_page_config = real_set_page_config
 
 # -------------------------
 # Minimal responsive CSS injection
