@@ -170,11 +170,21 @@ from zoneinfo import ZoneInfo as _ZI
 _today_kst = _dt.now(_ZI("Asia/Seoul")).strftime("%Y-%m-%d")
 _stale = bool(slate_date and slate_date != _today_kst)
 if _stale:
-    st.warning(
-        f"Showing the {slate_date} KST slate \u2014 today in Korea is {_today_kst}. "
-        f"The nightly build hasn't refreshed for today yet; press \u27f3 Sync latest above "
-        f"to pull the current slate. If it stays empty after syncing, it's a real KBO off-day."
-    )
+    if slate_date > _today_kst:
+        # Intended: no games today in Korea, so the pipeline advanced
+        # to the next date that has them.
+        st.info(
+            f"No KBO games today in Korea ({_today_kst}) \u2014 "
+            f"showing the next slate: {slate_date}."
+        )
+    else:
+        # File is behind today: the build hasn't run since the date
+        # rolled. Prompt a sync.
+        st.warning(
+            f"Showing the {slate_date} KST slate \u2014 today in Korea is "
+            f"{_today_kst}. The nightly build hasn't refreshed yet; press "
+            f"\u27f3 Sync latest above to pull the current slate."
+        )
 
 if games is None:
     st.markdown(card_open("\u26be KBO engine is being connected"), unsafe_allow_html=True)

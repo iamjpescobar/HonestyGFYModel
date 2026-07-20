@@ -330,7 +330,17 @@ def main():
         print(f"NPB: pitcher-stats fetch failed ({e}) — starters will ship without ERA/W-L/K")
     print(f"NPB: {len(pitcher_stats)} pitchers with season stats fetched")
 
+    # Slate selection: today in Japan if it has games; otherwise the
+    # NEXT upcoming date with games. See KBO pipeline for rationale.
+    _future = sorted([g for g in all_games
+                      if g["date"] >= today and g.get("status") != "final"],
+                     key=lambda x: x["date"])
     todays = [g for g in all_games if g["date"] == today]
+    slate_date = today
+    if not todays and _future:
+        slate_date = _future[0]["date"]
+        todays = [g for g in all_games if g["date"] == slate_date]
+        print(f"NPB: no games today ({today} JST) — showing next slate {slate_date}")
     games_out = []
     for g in todays:
         entry = {
@@ -383,7 +393,7 @@ def main():
     payload = {
         "generated_at_jst": now_jst.strftime("%Y-%m-%d %H:%M"),
         "source": "npb.jp official monthly schedule/results",
-        "slate_date_jst": today,
+        "slate_date_jst": slate_date,
         "games": games_out,
     }
     (OUT / "games.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2))

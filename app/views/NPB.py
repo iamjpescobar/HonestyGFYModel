@@ -43,11 +43,21 @@ from zoneinfo import ZoneInfo as _ZI
 _today_jst = _dt.now(_ZI("Asia/Tokyo")).strftime("%Y-%m-%d")
 _stale = bool(slate_date and slate_date != _today_jst)
 if _stale:
-    st.warning(
-        f"Showing the {slate_date} JST slate \u2014 today in Japan is {_today_jst}. "
-        f"The nightly build hasn't refreshed for today yet; press \u27f3 Sync latest above "
-        f"to pull the current slate. If it stays empty after syncing, it's a real NPB off-day."
-    )
+    if slate_date > _today_jst:
+        # Intended: no games today in Japan, so the pipeline advanced
+        # to the next date that has them.
+        st.info(
+            f"No NPB games today in Japan ({_today_jst}) \u2014 "
+            f"showing the next slate: {slate_date}."
+        )
+    else:
+        # File is behind today: the build hasn't run since the date
+        # rolled. Prompt a sync.
+        st.warning(
+            f"Showing the {slate_date} JST slate \u2014 today in Japan is "
+            f"{_today_jst}. The nightly build hasn't refreshed yet; press "
+            f"\u27f3 Sync latest above to pull the current slate."
+        )
 
 if games is None:
     st.markdown(card_open("\u26be NPB engine is being connected"), unsafe_allow_html=True)

@@ -547,7 +547,21 @@ def main():
               "TeamStats.aspx (below) don't depend on this and should still ship.")
 
     stats = team_form(finals) if finals else {}
+
+    # Slate selection: today in Korea if it has games; otherwise the
+    # NEXT upcoming date that does (the crawl already pulled 6 days
+    # ahead). This keeps the page useful on off-days / after the day
+    # rolls in Korea, instead of showing an empty or stale slate. The
+    # chosen date ships as slate_date_kst so the view labels it.
+    _future = sorted([g for g in all_games
+                      if g["date"] >= today and g.get("status") != "final"],
+                     key=lambda x: x["date"])
     todays = [g for g in all_games if g["date"] == today]
+    slate_date = today
+    if not todays and _future:
+        slate_date = _future[0]["date"]
+        todays = [g for g in all_games if g["date"] == slate_date]
+        print(f"KBO: no games today ({today} KST) — showing next slate {slate_date}")
 
     try:
         pitcher_stats = fetch_pitcher_stats()
@@ -615,7 +629,7 @@ def main():
     (OUT / "games.json").write_text(json.dumps({
         "generated_at_kst": now_kst.strftime("%Y-%m-%d %H:%M"),
         "source": "mykbostats.com schedule (season crawl) + eng.koreabaseball.com team stats",
-        "slate_date_kst": today,
+        "slate_date_kst": slate_date,
         "games": games_out,
     }, ensure_ascii=False, indent=2))
     print(f"KBO: wrote {len(games_out)} games for {today} KST")
