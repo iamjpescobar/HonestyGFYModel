@@ -25,6 +25,7 @@ import streamlit as st
 
 from styles.kc_theme import COLOR
 from engines.trend_chart import window_hit_chips, render_trend_bars
+from engines.team_logos import logo_url_by_id
 
 EASTERN = ZoneInfo("America/New_York")
 _URL = "https://statsapi.mlb.com/api/v1/people/{pid}/stats"
@@ -61,6 +62,7 @@ def _game_log_json(batter_id: int, season: int) -> str:
         opp = (sp.get("opponent") or {})
         opp_label = opp.get("abbreviation") or opp.get("teamName") or opp.get("name") or ""
         games.append({"date": sp.get("date", ""), "opp": opp_label,
+                      "opp_id": opp.get("id"),
                       "h": h, "hr": hr, "rbi": rbi, "r": r, "ab": ab,
                       "hrr": h + r + rbi})
     games.sort(key=lambda g: g["date"])
@@ -93,15 +95,17 @@ def render_batter_trend(batter_id, name, stat_label: str = "Hits",
     sub = games if n is None else games[-n:]
     vals = [g[key] for g in sub]
 
-    # Unique x labels — doubleheader same-day games get a suffix so the
-    # chart never merges two real games into one bar.
-    labels, seen = [], {}
+    # Short x labels (dates only — the opponent shows as a LOGO under
+    # each bar instead of a long team name). Doubleheader same-day
+    # games get a suffix so two real games never merge into one bar.
+    labels, seen, logos = [], {}, []
     for g in sub:
-        base = f'{g["date"][5:]} {g["opp"]}'.strip()
+        base = g["date"][5:]
         seen[base] = seen.get(base, 0) + 1
         labels.append(base if seen[base] == 1 else f"{base} ({seen[base]})")
+        logos.append(logo_url_by_id(g.get("opp_id")))
 
-    render_trend_bars(labels, vals, stat_label, line)
+    render_trend_bars(labels, vals, stat_label, line, logos=logos)
 
     total_games = len(vals)
     avg = sum(vals) / total_games

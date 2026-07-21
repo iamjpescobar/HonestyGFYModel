@@ -56,19 +56,28 @@ def window_hit_chips(values, line: float, active_label: str,
         )
 
 
-def render_trend_bars(labels, values, stat_label: str, line: float) -> None:
-    """Labeled bar chart for one window's games, oldest to newest."""
+def render_trend_bars(labels, values, stat_label: str, line: float,
+                      logos=None) -> None:
+    """Labeled bar chart for one window's games, oldest to newest.
+    logos: optional list of image URLs (or None per game), same length
+    as labels — rendered as a row of opponent logos under the bars so
+    the x-axis stays short (dates only)."""
     import altair as alt
 
     df = pd.DataFrame({"Game": labels, "v": [0 if v is None else v for v in values]})
     df["cleared"] = df["v"] > line
     order = list(df["Game"])
+    has_logos = bool(logos) and len(logos) == len(labels) and any(logos)
+    ymax = max([v for v in df["v"]] + [line]) * 1.18 or 1
+    ypad = ymax * 0.11 if has_logos else 0
 
     base = alt.Chart(df).encode(
         x=alt.X("Game:N", sort=order, axis=alt.Axis(labelAngle=-45, title=None)),
     )
+    _yscale = alt.Scale(domain=[-ypad, ymax]) if has_logos else alt.Undefined
+    _yaxis = alt.Axis(tickMinStep=1, values=list(range(0, int(ymax) + 1))) if has_logos else alt.Axis(tickMinStep=1)
     bars = base.mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
-        y=alt.Y("v:Q", title=stat_label, axis=alt.Axis(tickMinStep=1)),
+        y=alt.Y("v:Q", title=stat_label, axis=_yaxis, scale=_yscale),
         color=alt.condition(alt.datum.cleared,
                             alt.value(COLOR["stat_high"]),
                             alt.value("#8a3a40")),
@@ -83,7 +92,21 @@ def render_trend_bars(labels, values, stat_label: str, line: float) -> None:
         strokeDash=[5, 4], color=COLOR["text"], opacity=0.6
     ).encode(y="y:Q")
 
+    layers = [bars, text, rule]
+    if has_logos:
+        ldf = pd.DataFrame({"Game": labels,
+                            "url": [u or "" for u in logos],
+                            "ly": [-ypad * 0.55] * len(labels)})
+        ldf = ldf[ldf["url"] != ""]
+        if not ldf.empty:
+            layers.append(
+                alt.Chart(ldf).mark_image(width=16, height=16).encode(
+                    x=alt.X("Game:N", sort=order),
+                    y=alt.Y("ly:Q"),
+                    url="url:N",
+                )
+            )
     st.altair_chart(
-        (bars + text + rule).properties(height=250).configure_view(strokeOpacity=0),
+        alt.layer(*layers).properties(height=250).configure_view(strokeOpacity=0),
         use_container_width=True,
     )

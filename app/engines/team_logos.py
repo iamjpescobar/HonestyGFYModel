@@ -1,0 +1,45 @@
+"""
+MLB team logos — official MLB static CDN (www.mlbstatic.com), keyed by
+the real MLBAM team id from the same statsapi teams endpoint the
+roster engine already uses. No scraping, no third-party image hosts:
+these are the league's own logo files.
+
+Cached name->id map (24h — franchise ids don't move). Every helper
+degrades to None when a name can't be resolved, and callers render
+text instead — a missing logo is never a broken image.
+"""
+import json
+
+import requests
+import streamlit as st
+
+_TEAMS_URL = "https://statsapi.mlb.com/api/v1/teams?sportId=1"
+_LOGO_URL = "https://www.mlbstatic.com/team-logos/{tid}.svg"
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _team_ids_json() -> str:
+    try:
+        resp = requests.get(_TEAMS_URL, timeout=10)
+        resp.raise_for_status()
+        teams = resp.json().get("teams", [])
+    except Exception:
+        return json.dumps({})
+    return json.dumps({t.get("name"): t.get("id") for t in teams
+                       if t.get("name") and t.get("id")})
+
+
+def team_id(name):
+    try:
+        return json.loads(_team_ids_json()).get(name)
+    except Exception:
+        return None
+
+
+def logo_url_by_id(tid):
+    return _LOGO_URL.format(tid=int(tid)) if tid else None
+
+
+def logo_for(name):
+    """Logo URL for a full team name, or None if unresolvable."""
+    return logo_url_by_id(team_id(name))

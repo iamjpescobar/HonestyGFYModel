@@ -23,6 +23,7 @@ from engines.live_sync import sync_latest_button
 from engines.batter_trends import render_batter_trend
 from engines.bvp import render_bvp_card, render_zone_map, render_spray_chart
 from engines.edge import edge_components, pen_context
+from engines.team_logos import logo_for
 from engines.slam_engine import slam_from_profile
 from engines.top_plays import rank_batters, confidence_tier, matchup_tier
 from engines.team_abbreviations import team_abbr
@@ -112,6 +113,36 @@ with content_col:
             _labels.append(_lbl)
     visible_labels = _labels[page * PAGE_SIZE: page * PAGE_SIZE + PAGE_SIZE]
     current_global_label = _labels[st.session_state["gc_selected_game_idx"]]
+
+    # Logo matchup strip — official MLB logos for each visible game,
+    # selected game outlined teal. Purely visual: the pills below stay
+    # the tap target (Streamlit pills can't hold images), and each
+    # card carries the same label as its pill so they read as one
+    # control. Missing logos fall back to text automatically.
+    _strip_cells = []
+    for _lbl, _vg in zip(visible_labels, visible_games):
+        _a, _h = logo_for(_vg.get("away")), logo_for(_vg.get("home"))
+        _sel = _lbl == current_global_label
+        _bd = f'2px solid {COLOR["stat_high"]}' if _sel else f'1px solid {COLOR["text"]}22'
+        _bg = f'{COLOR["stat_high"]}14' if _sel else "transparent"
+        _ai = (f'<img src="{_a}" width="26" height="26" style="vertical-align:middle;">'
+               if _a else f'<b>{team_abbr(_vg.get("away", "?"))}</b>')
+        _hi = (f'<img src="{_h}" width="26" height="26" style="vertical-align:middle;">'
+               if _h else f'<b>{team_abbr(_vg.get("home", "?"))}</b>')
+        _strip_cells.append(
+            f'<div style="flex:1; text-align:center; padding:7px 4px; border-radius:8px; '
+            f'border:{_bd}; background:{_bg};">'
+            f'{_ai}<span style="margin:0 6px; color:{COLOR["text"]}; opacity:0.55; '
+            f'font-size:11px;">@</span>{_hi}'
+            f'<div style="font-size:9.5px; margin-top:3px; color:'
+            f'{COLOR["stat_high"] if _sel else COLOR["text"]}; '
+            f'opacity:{1 if _sel else 0.6};">{_lbl}</div></div>'
+        )
+    if _strip_cells:
+        st.markdown(
+            f'<div style="display:flex; gap:8px; margin:2px 0 6px 0;">{"".join(_strip_cells)}</div>',
+            unsafe_allow_html=True,
+        )
 
     with nav_pills:
         default_pill = current_global_label if current_global_label in visible_labels else None
