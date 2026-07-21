@@ -123,9 +123,11 @@ with content_col:
         # the teal highlight update together on the first click.
         st.markdown(
             "<style>"
-            "div[data-testid='stHorizontalBlock']:has(img[src*='team-logos']) button {"
+            "div[data-testid='stHorizontalBlock']:has(.lc-gamecard)"
+            ":not(:has(div[data-testid='stHorizontalBlock'])) button {"
             "  padding: 1px 4px !important; min-height: 26px !important; }"
-            "div[data-testid='stHorizontalBlock']:has(img[src*='team-logos']) button p {"
+            "div[data-testid='stHorizontalBlock']:has(.lc-gamecard)"
+            ":not(:has(div[data-testid='stHorizontalBlock'])) button p {"
             "  font-size: 10px !important; }"
             "</style>",
             unsafe_allow_html=True,
@@ -145,7 +147,7 @@ with content_col:
                    if _h else f'<b style="font-size:11px;">{team_abbr(_vg.get("home", "?"))}</b>')
             with _card_cols[_ci]:
                 st.markdown(
-                    f'<div style="text-align:center; padding:3px 2px 1px 2px; border-radius:8px 8px 0 0; '
+                    f'<div class="lc-gamecard" style="text-align:center; padding:3px 2px 1px 2px; border-radius:8px 8px 0 0; '
                     f'border:{"2px solid " + COLOR["stat_high"] if _sel else "1px solid " + COLOR["text"] + "22"}; '
                     f'border-bottom:none; background:{COLOR["stat_high"] + "14" if _sel else "transparent"};">'
                     f'{_ai}<span style="margin:0 5px; color:{COLOR["text"]}; opacity:0.55; '
@@ -557,10 +559,13 @@ with content_col:
     # documents the exact tiers and math.
     if ranked and pitcher_id:
         _pitcher_team = game["away"] if opposing_team == game["home"] else game["home"]
-        _pen_adj, _pen_note = pen_context(_pitcher_team, pitcher_id)
-        for _r in ranked:
-            _r.update(edge_components(_r.get("id"), pitcher_id,
-                                      _r.get("hr_score"), _pen_adj, _pen_note))
+        with st.spinner("Computing matchup edges \u2014 the first lineup of the day also "
+                        "builds the slate-wide bullpen baseline (~30s once, cached all day; "
+                        "instant after)\u2026"):
+            _pen_adj, _pen_note = pen_context(_pitcher_team, pitcher_id)
+            for _r in ranked:
+                _r.update(edge_components(_r.get("id"), pitcher_id,
+                                          _r.get("hr_score"), _pen_adj, _pen_note))
 
     def _score_sort_key(r, field):
         v = r.get(field)
