@@ -161,6 +161,7 @@ with st.spinner("Pulling game-time forecasts for every park\u2026 (30-min cache 
 
         _raw_temp = g.get("weather_temp") or (fc.get("temp") if fc else None)
         _hr_label, _hr_col, _hr_why = _hr_weather(_raw_temp, g.get("weather_wind"), roofed)
+        _why_txt = " \u00b7 ".join(_hr_why)
 
         rows_html.append(
             f'<div style="display:flex; align-items:center; gap:12px; padding:9px 12px; '
@@ -178,7 +179,7 @@ with st.spinner("Pulling game-time forecasts for every park\u2026 (30-min cache 
             f'<span style="padding:2px 8px; border-radius:4px; font-size:10.5px; font-weight:800; '
             f'background:{_hr_col}22; color:{_hr_col};">{_hr_label}</span>'
             f'<div style="font-size:8.5px; color:{COLOR["text"]}; opacity:0.55; margin-top:2px;">'
-            f'{" \u00b7 ".join(_hr_why)}</div></div>'
+            + _why_txt + '</div></div>'
             f'<div style="flex:1.1; text-align:right;">{_precip_badge(precip, roofed)}</div>'
             f'</div>'
         )
