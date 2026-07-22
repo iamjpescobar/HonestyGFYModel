@@ -158,7 +158,16 @@ def _batter_zone_dmg_json(batter_id) -> str:
 
 
 def zone_fit_component(batter_id, pitcher_id):
-    """(adj, note). 0.050 xSLG of expected-vs-own-norm = 3 pts, ±15."""
+    """(adj, note). 0.050 xSLG of expected-vs-own-norm = 3 pts, ±15.
+
+    Two-sided since the weak-spot build: the original version asked
+    only "does this pitcher throw where the batter does damage." That
+    ignored half the information sitting in the same data — whether
+    the pitcher actually GETS HURT there. A batter who mashes up in
+    the zone against a pitcher who lives up but dominates up is a
+    worse spot than the one-sided read suggests. The pitcher-side
+    layer is capped small (±5) because band-level xSLG allowed is a
+    coarser read than the batter's own per-zone damage."""
     if not batter_id or not pitcher_id:
         return 0, None
     try:
@@ -197,6 +206,33 @@ def zone_fit_component(batter_id, pitcher_id):
         if zn in zones_hh:
             hh_fit += share * zones_hh[zn]
             hh_cover += share
+    # ---- pitcher-side: where does HE get hurt? ----
+    # Weighted by the same mix, so this asks: in the bands he actually
+    # lives in, do hitters do damage against him? Capped ±5.
+    try:
+        from engines.pitcher_weakspots import zone_band_xslg
+        bands = zone_band_xslg(pitcher_id)
+    except Exception:
+        bands = {}
+    if bands:
+        _BAND_OF = {1: "Up", 2: "Up", 3: "Up", 4: "Middle", 5: "Middle",
+                    6: "Middle", 7: "Down", 8: "Down", 9: "Down"}
+        band_fit, band_cover = 0.0, 0.0
+        for zn, share in mix.items():
+            band = _BAND_OF.get(int(zn))
+            if band and band in bands:
+                band_fit += share * bands[band]
+                band_cover += share
+        if band_cover >= _ZONE_MIN_COVER:
+            hurt = band_fit / band_cover
+            # .450 is roughly a neutral xSLG allowed on contact; every
+            # .060 above or below it moves one point, capped ±5.
+            hurt_adj = int(max(-5, min(5, round((hurt - 0.450) / 0.060))))
+            if hurt_adj:
+                adj = int(max(-ZONE_CAP, min(ZONE_CAP, adj + hurt_adj)))
+                note += (f" \u00b7 he allows {hurt:.3f} xSLG in those bands "
+                         f"({hurt_adj:+d})")
+
     if hh_cover >= _ZONE_MIN_COVER:
         expected_hh = hh_fit / hh_cover
         hh_diff = expected_hh - _ZONE_HH_THRESHOLD

@@ -25,6 +25,8 @@ from engines.batter_trends import render_batter_trend
 from engines.bvp import render_bvp_card, render_zone_map, render_spray_chart
 from engines.edge import edge_components, pen_context, bvp_component
 from engines.pick_badges import compute_badges, render_badge_row
+from engines.pitcher_weakspots import get_weak_spots, XSLG_HOT, XSLG_COLD
+from engines.calibration import log_picks as _log_picks
 from engines.team_logos import logo_for
 from engines.park_weather import get_park_forecast
 from engines.slam_engine import slam_from_profile
@@ -337,6 +339,103 @@ with content_col:
                 st.markdown(bars_html, unsafe_allow_html=True)
             else:
                 st.caption("No arsenal data available.")
+
+    # -----------------------------------------------------
+    # WEAK SPOTS — where this starter actually gets hurt
+    # -----------------------------------------------------
+    if pitcher_id:
+        with st.expander("\U0001F3AF Weak spots \u2014 where he gets hurt"):
+            _ws = get_weak_spots(pitcher_id)
+            if _ws.get("error"):
+                st.caption(_ws["error"])
+            else:
+                def _xslg_chip(v):
+                    if v is None:
+                        return f'<span style="color:{COLOR["text"]}; opacity:0.4;">\u2014</span>'
+                    c = (COLOR["error"] if v >= XSLG_HOT
+                         else COLOR["stat_high"] if v <= XSLG_COLD else COLOR["warn"])
+                    return (f'<span style="font-weight:800; color:{c};">{v:.3f}</span>')
+
+                st.markdown(
+                    f'<div class="pf-card-subtitle">xSLG allowed on contact \u00b7 '
+                    f'red = hitters do real damage, blue = he wins there \u00b7 '
+                    f'anything below its sample floor shows \u2014 instead of a number, '
+                    f'because a rate off a thin bucket is noise. Formula and floors in '
+                    f'engines/pitcher_weakspots.py.</div>',
+                    unsafe_allow_html=True,
+                )
+
+                _pitches = [p for p in _ws.get("pitches", []) if p["usage"] >= 3]
+                if _pitches:
+                    st.markdown(
+                        f'<div style="font-size:12px; font-weight:700; color:{COLOR["gold"]}; '
+                        f'margin-top:8px;">By pitch type</div>', unsafe_allow_html=True)
+                    _rows = "".join(
+                        f'<tr><td style="padding:3px 8px 3px 0; font-size:11.5px; '
+                        f'color:{COLOR["text"]};">{p["name"]}</td>'
+                        f'<td style="padding:3px 8px; font-size:11px; color:{COLOR["text"]}; '
+                        f'opacity:0.6;">{p["usage"]:.0f}% usage</td>'
+                        f'<td style="padding:3px 8px; font-size:12px;">{_xslg_chip(p.get("xslg"))}</td>'
+                        f'<td style="padding:3px 0; font-size:10px; color:{COLOR["text"]}; '
+                        f'opacity:0.5;">{p.get("reason", str(p["bbe"]) + " batted balls")}</td></tr>'
+                        for p in _pitches
+                    )
+                    st.markdown(f'<table style="width:100%;">{_rows}</table>',
+                                unsafe_allow_html=True)
+
+                _bands = _ws.get("bands", [])
+                if _bands:
+                    st.markdown(
+                        f'<div style="font-size:12px; font-weight:700; color:{COLOR["gold"]}; '
+                        f'margin-top:10px;">By zone band</div>', unsafe_allow_html=True)
+                    _cells = "".join(
+                        f'<td style="text-align:center; padding:6px; border:1px solid '
+                        f'{COLOR["text"]}1E; border-radius:6px;">'
+                        f'<div style="font-size:10px; color:{COLOR["text"]}; opacity:0.6;">{b["band"]}</div>'
+                        f'<div style="font-size:13px;">{_xslg_chip(b.get("xslg"))}</div>'
+                        f'<div style="font-size:9px; color:{COLOR["text"]}; opacity:0.45;">'
+                        f'{b["bbe"]} bbe</div></td>'
+                        for b in _bands
+                    )
+                    st.markdown(
+                        f'<table style="width:100%; border-spacing:4px; '
+                        f'border-collapse:separate;"><tr>{_cells}</tr></table>',
+                        unsafe_allow_html=True)
+
+                _tto = _ws.get("tto", [])
+                if _tto:
+                    st.markdown(
+                        f'<div style="font-size:12px; font-weight:700; color:{COLOR["gold"]}; '
+                        f'margin-top:10px;">Times through the order</div>', unsafe_allow_html=True)
+                    _cells = "".join(
+                        f'<td style="text-align:center; padding:6px; border:1px solid '
+                        f'{COLOR["text"]}1E; border-radius:6px;">'
+                        f'<div style="font-size:10px; color:{COLOR["text"]}; opacity:0.6;">'
+                        f'{t["pass"]}{"st" if t["pass"]==1 else "nd" if t["pass"]==2 else "rd"} time</div>'
+                        f'<div style="font-size:13px;">{_xslg_chip(t.get("xslg"))}</div>'
+                        f'<div style="font-size:9px; color:{COLOR["text"]}; opacity:0.45;">'
+                        f'{t["bbe"]} bbe</div></td>'
+                        for t in _tto
+                    )
+                    st.markdown(
+                        f'<table style="width:100%; border-spacing:4px; '
+                        f'border-collapse:separate;"><tr>{_cells}</tr></table>',
+                        unsafe_allow_html=True)
+                    st.caption("Most starters decline the third time through a lineup \u2014 "
+                               "a steep jump here is a real bullpen and late-innings angle.")
+
+                _halves = _ws.get("halves", [])
+                if any(h.get("xslg") is not None for h in _halves):
+                    _txt = " \u00b7 ".join(
+                        f'{h["half"]}: ' + (f'{h["xslg"]:.3f}' if h.get("xslg") is not None else "\u2014")
+                        for h in _halves
+                    )
+                    st.caption(
+                        f"Top vs bottom of order \u2014 {_txt}. Shown for context only and "
+                        f"deliberately not scored: a gap here mostly reflects that better hitters "
+                        f"bat at the top, not a repeatable weakness. Per-slot splits aren't built "
+                        f"at all for the same reason."
+                    )
 
     # -----------------------------------------------------
     # MATCHUP GRADES — transparent signal checklists, both starters
@@ -879,6 +978,17 @@ with content_col:
                             [r for r in filtered if r.get("edge") is not None],
                             key=lambda r: -(r.get("edge") or 0),
                         )
+                        # log the top HR Edge bats for calibration
+                        if _badge_pool:
+                            try:
+                                _log_picks("hr_edge", [
+                                    {"id": r.get("id"), "name": r.get("name"),
+                                     "team": team_abbr(opposing_team)}
+                                    for r in _badge_pool[:5]
+                                ])
+                            except Exception:
+                                pass
+
                         _any_badges = False
                         for _br in _badge_pool[:5]:
                             _bd, _why = compute_badges(
