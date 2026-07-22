@@ -14,6 +14,7 @@ from engines.matchup_grades_intl import grade_wnba_matchup, render_matchup_grade
 
 from engines.live_sync import sync_latest_button
 from engines.trend_chart import window_hit_chips, render_trend_bars
+from engines.wnba_logos import logo_url_by_id
 
 inject_kc_theme()
 sync_latest_button(key="sync_wnba", include_data_package=True)
@@ -348,7 +349,8 @@ def _render_slate():
                                    "press \u27f3 Sync latest up top to pull it.")
                     else:
                         _pt_stat = st.segmented_control(
-                            "Stat", ["Points", "Rebounds", "Assists", "PRA", "3PM"],
+                            "Stat", ["Points", "Rebounds", "Assists", "PRA", "3PM",
+                                     "Stocks", "Minutes"],
                             default="Points", key=f"wnba_trend_stat_{gi}",
                             label_visibility="collapsed",
                         ) or "Points"
@@ -363,19 +365,31 @@ def _render_slate():
                             label_visibility="collapsed",
                         ) or "14.5")
                         _pt_key = {"Points": "pts", "Rebounds": "reb",
-                                   "Assists": "ast", "PRA": "pra", "3PM": "tpm"}[_pt_stat]
-                        _pt_all = [(gl.get(_pt_key) or 0) for gl in _plog]
+                                   "Assists": "ast", "PRA": "pra", "3PM": "tpm",
+                                   "Stocks": "stocks", "Minutes": "min"}[_pt_stat]
+                        # Stocks (steals + blocks) is derived per game
+                        # rather than stored, so it works on any log.
+                        def _stat_of(gl):
+                            if _pt_key == "stocks":
+                                return (gl.get("stl") or 0) + (gl.get("blk") or 0)
+                            return gl.get(_pt_key) or 0
+                        _pt_all = [_stat_of(gl) for gl in _plog]
                         window_hit_chips(_pt_all, _pt_line, _pt_win,
                                          windows=("L25", "L15", "L10", "L5"))
                         _n = {"L25": 25, "L15": 15, "L10": 10, "L5": 5}[_pt_win]
                         _sub = _plog[-_n:]
-                        _lbls, _seen = [], {}
+                        # Short date labels — the opponent shows as a
+                        # LOGO under each bar, same as the MLB charts,
+                        # so long team names never crowd the axis.
+                        _lbls, _seen, _logos = [], {}, []
                         for gl in _sub:
                             _b = str(gl.get("date") or "")[5:]
                             _seen[_b] = _seen.get(_b, 0) + 1
                             _lbls.append(_b if _seen[_b] == 1 else f"{_b} ({_seen[_b]})")
-                        _vals = [(gl.get(_pt_key) or 0) for gl in _sub]
-                        render_trend_bars(_lbls, _vals, _pt_stat, _pt_line)
+                            _logos.append(logo_url_by_id(gl.get("opp_id")))
+                        _vals = [_stat_of(gl) for gl in _sub]
+                        render_trend_bars(_lbls, _vals, _pt_stat, _pt_line,
+                                          logos=_logos)
                         _avg = sum(_vals) / len(_vals)
                         st.caption(
                             f"{_pl.get('name')} \u00b7 {_pt_win}: {len(_vals)} games \u00b7 "

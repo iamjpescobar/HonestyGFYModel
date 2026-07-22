@@ -88,7 +88,8 @@ def build_mlb_pages(include_admin: bool):
         ("Daily 13", "views/Daily_13.py"),
         ("Pitchers to Target", "views/Pitchers_To_Target.py"),
         ("Weather Board", "views/Weather_Board.py"),
-        ("Calibration", "views/Calibration.py"),
+        ("WNBA Defense", "views/WNBA_Defense.py"),
+        ("WNBA Props", "views/WNBA_Props.py"),
         ("Player of the Day", "views/Player_Of_The_Day.py"),
         # Model / Pitcher Report / Pitcher Splits / Pitch Mix Splits /
         # Lineup Analysis / Team Tools / KC Lineup Dashboard removed

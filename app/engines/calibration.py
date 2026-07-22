@@ -1,68 +1,250 @@
 """
-Calibration (app side) — READ ONLY.
+Calibration — did the picks actually hit?
 
-The record itself is produced by the nightly pipeline (see
-calibration_pipeline.py and slate_picks.py at the repo root) and
-ships inside the data package. The app never writes it: the app's
-data directory is rebuilt on every deploy, so anything written here
-would be erased within hours.
+This is the honesty backstop for every score on the site. Impressions
+lie: on a 15-game slate roughly 25 home runs happen, so any list of
+high-barrel bats in good parks will "look right" some nights. The only
+way to know whether HR Edge, the Daily 13, or anyone else's picks
+beat a coin flip is to write down the picks BEFORE the games and
+grade them AFTER.
 
-This module just reads what the pipeline published.
+How it works:
+  - log_picks(board, date, rows) writes that day's top picks to a
+    local JSON file, once per board per day (re-running is idempotent
+    — it overwrites the same day's entry rather than duplicating).
+  - grade_pending() looks up every logged pick from a past date and
+    fills in what actually happened, from MLB's official box-score
+    game logs (the same source the trend charts use).
+  - summary() reports hit rate by board over the tracked period.
+
+What's graded per board:
+  daily13       -> did the batter get >= 1 hit that day
+  hr_edge       -> did the batter hit >= 1 home run that day
+  wnba_props    -> did the player clear the line the board implied
+  wnba_defense  -> same, for the defense-matchup top picks
+
+MLB outcomes come from MLB's official stats API; WNBA outcomes from
+ESPN's public gamelog endpoint — the same source the WNBA pipeline
+already uses, so both halves of the site grade against the data they
+were built from.
+
+Storage is a plain JSON file under the app's data directory. It's
+small (a few KB per week), survives redeploys only if the data volume
+does — so this is a rolling record, and the page says so rather than
+implying a permanent ledger.
 """
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
+import requests
 import streamlit as st
 
-_RECORD = Path(__file__).resolve().parents[1] / "data" / "statcast" / "calibration.json"
+EASTERN = ZoneInfo("America/New_York")
+_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "calibration.json"
+_URL = "https://statsapi.mlb.com/api/v1/people/{pid}/stats"
 
 BOARDS = {
-    "daily13": {"label": "Daily 13", "question": "got a hit"},
-    "hr_edge": {"label": "HR Edge (slate top 10)", "question": "hit a home run"},
+    "daily13": {"sport": "mlb", "label": "Daily 13", "stat": "hits",
+                "threshold": 1, "question": "got a hit"},
+    "hr_edge": {"sport": "mlb", "label": "HR Edge (top 5)", "stat": "homeRuns",
+                "threshold": 1, "question": "hit a home run"},
+    # WNBA boards grade against a per-pick LINE rather than a fixed
+    # threshold — "did he clear the number this board implied" — so the
+    # threshold here is a default the pick can override.
+    "wnba_props": {"sport": "wnba", "label": "WNBA Props", "stat": "pts",
+                   "threshold": 15, "question": "cleared its line"},
+    "wnba_defense": {"sport": "wnba", "label": "WNBA Defense Matchup (top 5)",
+                     "stat": "pts", "threshold": 15,
+                     "question": "cleared its line"},
 }
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
-def _load_json() -> str:
+def _load():
     try:
-        return _RECORD.read_text()
+        return json.loads(_LOG_PATH.read_text())
     except Exception:
-        return "{}"
+        return {}
+
+
+def _save(data):
+    try:
+        _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _LOG_PATH.write_text(json.dumps(data, indent=2))
+        return True
+    except Exception:
+        return False
+
+
+def log_picks(board: str, rows, date_str: str = None) -> bool:
+    """Record today's picks for later grading. rows: [{"id","name",
+    "team"}...]. Idempotent per (board, date)."""
+    if board not in BOARDS or not rows:
+        return False
+    date_str = date_str or datetime.now(EASTERN).strftime("%Y-%m-%d")
+    data = _load()
+    data.setdefault(board, {})
+    data[board][date_str] = {
+        "picks": [{"id": r.get("id"), "name": r.get("name"),
+                   "team": r.get("team"),
+                   # optional per-pick grading target; falls back to the
+                   # board default when absent
+                   "stat": r.get("stat"), "line": r.get("line"),
+                   "result": None}
+                  for r in rows if r.get("id")],
+        "graded": False,
+    }
+    return _save(data)
+
+
+@st.cache_data(ttl=3600, max_entries=256, show_spinner=False)
+def _player_day_json(pid: int, date_str: str, season: int) -> str:
+    """That player's official box-score line for one date."""
+    try:
+        resp = requests.get(
+            _URL.format(pid=pid),
+            params={"stats": "gameLog", "group": "hitting", "season": season},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        stats = resp.json().get("stats") or []
+        splits = (stats[0].get("splits") if stats else []) or []
+    except Exception:
+        return json.dumps(None)
+    for sp in splits:
+        if sp.get("date") == date_str:
+            stat = sp.get("stat", {}) or {}
+            try:
+                return json.dumps({"hits": int(stat.get("hits", 0)),
+                                   "homeRuns": int(stat.get("homeRuns", 0))})
+            except Exception:
+                return json.dumps(None)
+    return json.dumps(None)
+
+
+_ESPN_LOG = ("https://site.api.espn.com/apis/common/v3/sports/basketball/wnba/"
+             "athletes/{pid}/gamelog")
+
+
+@st.cache_data(ttl=3600, max_entries=256, show_spinner=False)
+def _wnba_day_json(pid, date_str: str) -> str:
+    """That player's real box-score line for one date, from ESPN's
+    public gamelog endpoint — the same source the WNBA pipeline uses.
+    Returns None when he didn't play that day."""
+    try:
+        resp = requests.get(_ESPN_LOG.format(pid=pid), timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return json.dumps(None)
+
+    # ESPN returns a labels array plus per-event stat rows; map by label
+    names = [str(n).upper() for n in (data.get("names") or data.get("labels") or [])]
+    events = (data.get("events") or {})
+    want = date_str.replace("-", "")
+    for ev_id, ev in events.items():
+        ev_date = str(ev.get("gameDate") or "")[:10].replace("-", "")
+        if ev_date != want:
+            continue
+        stats = ev.get("stats") or []
+        if not stats or not names:
+            return json.dumps(None)
+        row = {}
+        for i, label in enumerate(names):
+            if i >= len(stats):
+                break
+            try:
+                row[label] = float(stats[i])
+            except (TypeError, ValueError):
+                continue
+        pts = row.get("PTS")
+        reb = row.get("REB")
+        ast = row.get("AST")
+        if pts is None:
+            return json.dumps(None)
+        return json.dumps({
+            "pts": pts, "reb": reb, "ast": ast,
+            "pra": (pts or 0) + (reb or 0) + (ast or 0),
+        })
+    return json.dumps(None)
+
+
+def grade_pending(max_days: int = 14) -> int:
+    """Fill in outcomes for logged picks from past dates. Returns the
+    number of newly graded picks. Only grades dates strictly before
+    today, so an in-progress slate is never scored."""
+    data = _load()
+    today = datetime.now(EASTERN).strftime("%Y-%m-%d")
+    cutoff = (datetime.now(EASTERN) - timedelta(days=max_days)).strftime("%Y-%m-%d")
+    graded_n = 0
+    for board, days in data.items():
+        cfg = BOARDS.get(board)
+        if not cfg:
+            continue
+        for date_str, entry in days.items():
+            if entry.get("graded") or date_str >= today or date_str < cutoff:
+                continue
+            season = int(date_str[:4])
+            all_done = True
+            for pick in entry.get("picks", []):
+                if pick.get("result") is not None or not pick.get("id"):
+                    continue
+                try:
+                    if cfg.get("sport") == "wnba":
+                        box = json.loads(_wnba_day_json(pick["id"], date_str))
+                    else:
+                        box = json.loads(_player_day_json(int(pick["id"]), date_str, season))
+                except Exception:
+                    box = None
+                if box is None:
+                    # didn't play, or the log isn't available — mark it
+                    # DNP rather than counting it as a miss
+                    pick["result"] = "dnp"
+                else:
+                    stat_key = pick.get("stat") or cfg["stat"]
+                    target = pick.get("line")
+                    if target is None:
+                        target = cfg["threshold"]
+                    value = box.get(stat_key)
+                    if value is None:
+                        pick["result"] = "dnp"
+                    else:
+                        # a "line" of 15.5 means the pick needed MORE
+                        # than 15.5; an integer threshold means >=
+                        cleared = (value > target if isinstance(target, float)
+                                   and target % 1 else value >= target)
+                        pick["result"] = "hit" if cleared else "miss"
+                        graded_n += 1
+            entry["graded"] = all_done
+    if graded_n:
+        _save(data)
+    return graded_n
 
 
 def summary():
-    """Per-board record, or empty dict when nothing is tracked yet."""
-    try:
-        data = json.loads(_load_json())
-    except Exception:
-        data = {}
+    """Per-board record over everything graded so far."""
+    data = _load()
     out = {}
     for board, cfg in BOARDS.items():
         days = data.get(board, {})
         hits = misses = dnp = 0
-        per_day = []
+        dates = []
         for date_str, entry in sorted(days.items()):
-            d_hit = sum(1 for p in entry.get("picks", []) if p.get("result") == "hit")
-            d_miss = sum(1 for p in entry.get("picks", []) if p.get("result") == "miss")
-            d_dnp = sum(1 for p in entry.get("picks", []) if p.get("result") == "dnp")
-            if d_hit or d_miss:
-                per_day.append({"date": date_str, "hits": d_hit,
-                                "total": d_hit + d_miss,
-                                "picks": entry.get("picks", [])})
-            hits += d_hit
-            misses += d_miss
-            dnp += d_dnp
+            day_hits = sum(1 for p in entry.get("picks", []) if p.get("result") == "hit")
+            day_miss = sum(1 for p in entry.get("picks", []) if p.get("result") == "miss")
+            day_dnp = sum(1 for p in entry.get("picks", []) if p.get("result") == "dnp")
+            if day_hits or day_miss:
+                dates.append({"date": date_str, "hits": day_hits,
+                              "total": day_hits + day_miss})
+            hits += day_hits
+            misses += day_miss
+            dnp += day_dnp
         total = hits + misses
         out[board] = {
             "label": cfg["label"], "question": cfg["question"],
             "hits": hits, "total": total, "dnp": dnp,
             "rate": round(hits / total * 100, 1) if total else None,
-            "days": per_day,
+            "days": dates,
         }
     return out
-
-
-def board_record(board: str):
-    """One board's summary, or None when untracked."""
-    s = summary().get(board)
-    return s if s and s.get("total") else None

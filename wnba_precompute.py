@@ -192,9 +192,14 @@ def parse_boxscore(event_id, game_date, logs, debug=False):
     data = get_json(f"{BASE}/summary?event={event_id}")
     blocks = (data.get("boxscore") or {}).get("players", []) or []
     names = [(b.get("team") or {}).get("displayName", "") for b in blocks]
+    # ESPN's box-score team block carries the team id — capturing it
+    # here is what lets the trend chart show opponent LOGOS instead of
+    # long team names, matching the MLB charts.
+    ids = [(b.get("team") or {}).get("id") for b in blocks]
     for i, team_block in enumerate(blocks):
         team_name = names[i]
         opp_name = names[1 - i] if len(names) == 2 else ""
+        opp_id = ids[1 - i] if len(ids) == 2 else None
         for stat_group in team_block.get("statistics", []) or []:
             labels = [l.upper() for l in (stat_group.get("labels") or stat_group.get("names") or [])]
             if "PTS" not in labels:
@@ -213,7 +218,8 @@ def parse_boxscore(event_id, game_date, logs, debug=False):
                 stats = entry.get("stats") or []
                 if not athlete.get("id") or len(stats) <= max(idx.values(), default=0):
                     continue
-                line = {"date": game_date, "team": team_name, "opp": opp_name}
+                line = {"date": game_date, "team": team_name, "opp": opp_name,
+                        "opp_id": opp_id}
                 for k, i2 in idx.items():
                     line[k.lower()] = _num(stats[i2])
                 def _made_att(i, mk, ak):
@@ -247,6 +253,50 @@ def parse_boxscore(event_id, game_date, logs, debug=False):
 def _avg(vals):
     vals = [v for v in vals if v is not None]
     return round(sum(vals) / len(vals), 1) if vals else None
+
+
+def positional_defense(logs):
+    """How many points, rebounds, and assists each team ALLOWS to each
+    position, per game — the WNBA analog of "which pitcher is easiest
+    to hit". Built from the same real box-score logs already collected:
+    every player line records who he played against, so crediting the
+    opponent with what each position did to them is pure arithmetic on
+    data we already have.
+
+    Returns {team: {pos: {"pts": x, "reb": y, "ast": z, "gp": n}}}.
+    Positions with fewer than MIN_POS_GAMES team-games of data are
+    dropped rather than reported on a thin sample."""
+    MIN_POS_GAMES = 5
+    # allowed[team][pos] -> {"pts": [...per game...], ...}
+    allowed = {}
+    for pid, rec in logs.items():
+        pos = (rec.get("pos") or "").upper()[:1]   # G / F / C
+        if pos not in ("G", "F", "C"):
+            continue
+        for gl in rec.get("games", []):
+            opp = gl.get("opp")
+            date = gl.get("date")
+            if not opp or not date:
+                continue
+            bucket = allowed.setdefault(opp, {}).setdefault(pos, {})
+            day = bucket.setdefault(date, {"pts": 0.0, "reb": 0.0, "ast": 0.0})
+            day["pts"] += gl.get("pts") or 0
+            day["reb"] += gl.get("reb") or 0
+            day["ast"] += gl.get("ast") or 0
+
+    out = {}
+    for team, by_pos in allowed.items():
+        for pos, by_date in by_pos.items():
+            gp = len(by_date)
+            if gp < MIN_POS_GAMES:
+                continue
+            out.setdefault(team, {})[pos] = {
+                "pts": round(sum(d["pts"] for d in by_date.values()) / gp, 1),
+                "reb": round(sum(d["reb"] for d in by_date.values()) / gp, 1),
+                "ast": round(sum(d["ast"] for d in by_date.values()) / gp, 1),
+                "gp": gp,
+            }
+    return out
 
 
 def team_research(finals):
@@ -348,8 +398,11 @@ def player_summaries(logs):
             # Slim on purpose: only what the chart plots.
             "log": [
                 {"date": gl.get("date"), "opp": gl.get("opp"),
+                 "opp_id": gl.get("opp_id"),
                  "pts": gl.get("pts"), "reb": gl.get("reb"),
                  "ast": gl.get("ast"), "tpm": gl.get("tpm"),
+                 "stl": gl.get("stl"), "blk": gl.get("blk"),
+                 "to": gl.get("to"), "min": gl.get("min"),
                  "pra": gl.get("pra")}
                 for gl in games[-25:]
             ],
@@ -425,6 +478,7 @@ def main():
 
     players = player_summaries(logs)
     teams = team_research(finals)
+    pos_def = positional_defense(logs)
     print(f"WNBA: parsed {finals_count} real box scores -> "
           f"{len(players)} players with game logs; {len(teams)} teams with research")
     if players:
@@ -445,6 +499,9 @@ def main():
             if t:
                 g[f"{side}_pf_pg"] = t["pf_pg"]
                 g[f"{side}_pa_pg"] = t["pa_pg"]
+                # Positional defense the OPPOSING team allows — powers
+                # the Defense Matchup board and the per-player rating.
+                g[f"{side}_pos_def_allowed"] = pos_def.get(g.get(side)) or {}
                 g[f"{side}_avg_total"] = t["avg_total"]
                 g[f"{side}_l10"] = t["l10"]
                 g[f"{side}_form"] = t["form"]
