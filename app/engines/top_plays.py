@@ -21,7 +21,14 @@ app's own choice, not an official stat.
 from engines.savant_leaderboard import get_percentile
 
 
-def hr_score(player_id, savant_df):
+# HR/FB scoring anchors — league-average HR/FB sits around 11.5%, so
+# that maps to 50 on the same 0-100 scale the Savant percentiles use.
+# Weight is deliberately light: HR/FB is the least stable power stat.
+_LEAGUE_HRFB = 11.5
+_HRFB_WEIGHT = 0.15
+
+
+def hr_score(player_id, savant_df, hrfb_pct=None):
     """
     Real MLB-computed percentile average of Barrel%, Hard-Hit%, and
     average Exit Velocity —
@@ -39,7 +46,23 @@ def hr_score(player_id, savant_df):
     # to the surviving components instead of breaking.
     ev = get_percentile(savant_df, player_id, "exit_velocity")
     parts = [p for p in [brl, hh, ev] if p is not None]
-    return round(sum(parts) / len(parts)) if parts else None
+    if not parts:
+        return None
+    base = sum(parts) / len(parts)
+
+    # HR/FB layer (15%): does his contact quality actually CONVERT to
+    # home runs? Barrel/HH/EV measure the process; HR/FB measures the
+    # result. It's the noisiest of the power stats, so it's weighted
+    # lightly, floored at 25 fly balls (enforced upstream — the metric
+    # is None below that), and scaled against the real league anchor
+    # (~11.5% HR/FB is roughly league average -> 50 on this scale).
+    # Missing HR/FB simply leaves the score at its percentile base
+    # rather than penalizing a bat we can't measure.
+    hrfb = (hrfb_pct if hrfb_pct is not None else None)
+    if hrfb is None:
+        return round(base)
+    hrfb_scaled = max(0.0, min(100.0, hrfb / _LEAGUE_HRFB * 50.0))
+    return round(base * (1 - _HRFB_WEIGHT) + hrfb_scaled * _HRFB_WEIGHT)
 
 
 def hit_score(player_id, savant_df):
@@ -108,6 +131,8 @@ def rank_batters(batter_profiles: list, savant_df) -> list:
     name matching does.
 
     Returns the same list with hr_score/hit_score/k_score attached.
+    HR Score additionally folds in each batter's HR/FB from his
+    profile (15% weight, 25-fly-ball floor) when it's available.
     A score is None (never a fabricated 0) when Baseball Savant simply
     doesn't have this player yet — too few plate appearances so far
     this season, most commonly.
@@ -117,7 +142,12 @@ def rank_batters(batter_profiles: list, savant_df) -> list:
         pid = b.get("id")
         out.append({
             **b,
-            "hr_score": hr_score(pid, savant_df),
+            # HR/FB comes from the batter's own windowed profile (the
+            # same one the lineup table shows), so the layer respects
+            # whatever window the view is on rather than always using
+            # season data.
+            "hr_score": hr_score(pid, savant_df,
+                                 hrfb_pct=(b.get("profile") or {}).get("HR/FB")),
             "hit_score": hit_score(pid, savant_df),
             "k_score": k_score(pid, savant_df),
         })

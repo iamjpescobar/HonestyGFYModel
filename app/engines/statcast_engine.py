@@ -28,6 +28,10 @@ def _today_str():
 
 # Only the columns the derivations below actually read.
 # Raw Statcast returns ~90+ columns; this is the working set.
+# HR/FB sample floor — the stat is famously unstable, so it doesn't
+# report (or score) below this many fly balls in the window.
+_HRFB_MIN_FB = 25
+
 _KEEP_COLS = [
     # identity / ordering (recency windows need these)
     "game_date", "game_pk", "at_bat_number", "pitch_number",
@@ -232,6 +236,7 @@ def _compute_batted_ball_metrics(df: pd.DataFrame):
         "Brl %": 0.0, "HH %": 0.0, "LD %": 0.0, "GB %": 0.0, "FB %": 0.0,
         "SweetSpot %": 0.0, "PullAir %": 0.0, "PullBrl %": 0.0, "Blast %": 0.0, "BBE": 0,
         "BA": 0.0, "AB": 0,
+        "HR/FB": None, "FB_count": 0,
     }
     if df.empty or "type" not in df.columns:
         return empty
@@ -268,6 +273,18 @@ def _compute_batted_ball_metrics(df: pd.DataFrame):
     sweet_spot = la.between(8, 32).sum()
 
     bb_type = bbe_df.get("bb_type", pd.Series(dtype=str))
+    # HR/FB — of his fly balls, how many left the yard. Uses Statcast's
+    # own bb_type classification rather than a homemade launch-angle
+    # cutoff. Fly balls only (not popups, not line drives): that's the
+    # standard definition and the one that means anything for power.
+    # None below the sample floor — HR/FB is the noisiest power stat
+    # and a rate off 8 fly balls is not a profile.
+    _fb_mask = bb_type == "fly_ball"
+    _fb_n = int(_fb_mask.sum())
+    _hr_fb = None
+    if _fb_n >= _HRFB_MIN_FB and "events" in bbe_df.columns:
+        _hr_on_fb = int((bbe_df.loc[_fb_mask, "events"] == "home_run").sum())
+        _hr_fb = round(_hr_on_fb / _fb_n * 100, 1)
     ld = (bb_type == "line_drive").sum()
     gb = (bb_type == "ground_ball").sum()
     fb = (bb_type == "fly_ball").sum()
@@ -319,6 +336,7 @@ def _compute_batted_ball_metrics(df: pd.DataFrame):
         "PullBrl %": round(pull_barrel / bbe_count * 100, 2),
         "Blast %": blast_pct,
         "BA": ba, "AB": ab,
+        "HR/FB": _hr_fb, "FB_count": _fb_n,
         "BBE": bbe_count,
     }
 

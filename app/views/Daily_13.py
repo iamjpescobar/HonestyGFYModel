@@ -11,8 +11,12 @@ import streamlit as st
 
 from styles.kc_theme import inject_kc_theme, card, footer, COLOR
 from styles.table_style import style_stat_table
-from engines.daily_13 import get_daily_13, MIN_HIT_RATE, MIN_GAMES, BOARD_SIZE
+from engines.daily_13 import (
+    get_daily_13, MIN_HIT_RATE, MIN_GAMES, BOARD_SIZE,
+    W_FORM, W_MATCHUP, W_CONTEXT, L15_GATE_HITS, L15_GATE_GAMES,
+)
 from engines.live_sync import sync_latest_button
+from engines.calibration import log_picks, grade_pending, summary
 
 inject_kc_theme()
 
@@ -36,12 +40,12 @@ with card("daily13"):
     st.markdown(
         f'<div class="pf-card-title" style="color:{COLOR["gold"]};">Most consistent hitters on today\'s slate</div>'
         f'<div class="pf-card-subtitle" style="color:{COLOR["magenta_purple"]};">'
-        f'Hit% = share of games with \u2265 1 hit across every game in this app\'s Statcast files '
-        f'(full current season \u00b7 the deepest real history the pipeline carries) \u00b7 '
-        f'bar to make the board: \u2265 {MIN_HIT_RATE:.0f}% and \u2265 {MIN_GAMES} games \u00b7 '
-        f'this is historical consistency \u00d7 a capped BvP check vs tonight\'s starter '
-        f'(+4/-4 rate points for order only \u2014 8+ PA at .300+, or 10+ PA at .150-; displayed Hit% is always raw '
-        f'and the BvP line is on the row); cross it with the Game Card before acting on it.</div>',
+        f'The 13 best bets to get a hit TONIGHT \u2014 a slate read, not a season leaderboard \u00b7 '
+        f'floor to qualify: \u2265 {MIN_HIT_RATE:.0f}% of games with a hit and \u2265 {MIN_GAMES} games \u00b7 '
+        f'ranked by recent form ({W_FORM:.0%}), tonight\'s pitcher matchup ({W_MATCHUP:.0%}), and '
+        f'bullpen + lineup-slot context ({W_CONTEXT:.0%}) \u00b7 '
+        f'\U0001F512 = hit in {L15_GATE_HITS}+ of his last {L15_GATE_GAMES} \u00b7 '
+        f'every component is real and shown per row \u2014 cross it with the Game Card before acting.</div>',
         unsafe_allow_html=True,
     )
 
@@ -54,26 +58,57 @@ with card("daily13"):
     else:
         df = pd.DataFrame([
             {
-                "Player": r["name"],
+                "Player": ("\U0001F512 " if r.get("locked") else "") + r["name"],
                 "Team": r["team"],
-                "GP": str(r["gp"]),
-                "Games w/ Hit": str(r["hit_gp"]),
-                "Hit%": f'{r["rate"]:.1f}',
-                "Active streak": str(r["streak"]),
+                "Opp": r.get("opp", "\u2014"),
+                "Tonight": f'{r["tonight"]:.1f}',
+                "L15": r.get("l15", "\u2014"),
+                "L5": r.get("l5", "\u2014"),
+                "Season": f'{r["rate"]:.1f}',
+                "Form": f'{r.get("form", 0):.0f}',
+                "Matchup": f'{r.get("matchup", 0):.0f}',
+                "Context": f'{r.get("context", 0):.0f}',
+                "Streak": str(r["streak"]),
                 "Today": r.get("today", "roster"),
-                "BvP vs tonight's starter": r.get("bvp", ""),
             }
             for r in rows
         ])
         st.dataframe(
             style_stat_table(
                 df,
-                favor_high=["Hit%", "Active streak"],
+                favor_high=["Tonight", "Form", "Matchup", "Context", "Season", "Streak"],
                 gradient=True,
             ),
             width="stretch",
             height=min(56 + 35 * len(df), 560),
         )
+        # Calibration: record tonight's board, grade past days, and
+        # show the running record. This is what turns "the board looks
+        # right" into a measured hit rate.
+        log_picks("daily13", rows)
+        grade_pending()
+        _cal = summary().get("daily13", {})
+        if _cal.get("total"):
+            st.caption(
+                f'Tracked record \u2014 this board\'s picks {_cal["question"]} '
+                f'{_cal["hits"]}/{_cal["total"]} ({_cal["rate"]}%) over the graded period'
+                + (f' \u00b7 {_cal["dnp"]} did not play (excluded)' if _cal.get("dnp") else "")
+            )
+        else:
+            st.caption("Tracked record \u2014 tonight's picks are logged; results appear "
+                       "here once the games are final.")
+
+        with st.expander("\U0001F50D Why each bat \u2014 the components behind tonight's score"):
+            for r in rows:
+                _lock = " \u00b7 \U0001F512 locked in" if r.get("locked") else ""
+                st.caption(
+                    f'**{r["name"]}** ({r["team"]} vs {r.get("opp", "?")}) \u2014 '
+                    f'tonight {r["tonight"]:.1f}{_lock} \u00b7 '
+                    f'form {r.get("form", 0):.0f} (L15 {r.get("l15", "?")}, L5 {r.get("l5", "?")}) \u00b7 '
+                    f'matchup {r.get("matchup", 0):.0f} \u00b7 context {r.get("context", 0):.0f}'
+                    + (f' \u00b7 {r["why"]}' if r.get("why") else "")
+                )
+
         if len(rows) < BOARD_SIZE:
             st.caption(
                 f"Only {len(rows)} hitter(s) clear the bar today \u2014 shown as-is, "

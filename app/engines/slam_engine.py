@@ -26,6 +26,12 @@ SLAM_WINDOWS = [
 ]
 
 
+# HR/FB scoring anchors — shared with engines/top_plays.py so both
+# scores treat the stat identically.
+_LEAGUE_HRFB = 11.5
+_HRFB_WEIGHT = 0.15
+
+
 def slam_from_profile(profile: dict) -> dict:
     """
     Pure computation: real SLAM score from an ALREADY-FETCHED windowed
@@ -49,10 +55,23 @@ def slam_from_profile(profile: dict) -> dict:
         norm_parts = [p for p in [norm_slg, norm_woba] if p is not None]
         slam_score = round(sum(norm_parts) / len(norm_parts), 1) if norm_parts else None
 
+        # HR/FB layer (15%) — xSLG/xwOBA price expected damage; HR/FB
+        # asks whether his fly balls actually leave. Same league anchor
+        # (~11.5% -> 50) and same light weight as HR Score, and it only
+        # applies when the profile cleared the 25-fly-ball floor, so a
+        # thin sample never moves SLAM.
+        hrfb = profile.get("HR/FB")
+        if slam_score is not None and hrfb is not None:
+            hrfb_scaled = max(0.0, min(100.0, hrfb / _LEAGUE_HRFB * 50.0))
+            slam_score = round(slam_score * (1 - _HRFB_WEIGHT)
+                               + hrfb_scaled * _HRFB_WEIGHT, 1)
+
     return {
         "slam_score": slam_score,
         "xSLG": xslg,
         "xwOBA": xwoba,
+        "HR/FB": profile.get("HR/FB"),
+        "FB_count": profile.get("FB_count", 0),
         "sample_bbe": profile.get("BBE", 0),
         "window_rows": profile.get("_window_rows", 0),
         "error": profile.get("_error"),

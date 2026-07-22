@@ -1,62 +1,77 @@
 """
-The Daily 13 — the 13 most consistent hitters on today's MLB slate.
+The Daily 13 — the 13 best bets to get a hit TONIGHT.
 
-For every hitter on every roster playing today, this scans his ENTIRE
-game log in this app's Statcast files (the full current season — the
-deepest real history the pipeline carries) and computes:
+This is a slate read, not a leaderboard. The original version ranked
+by season-long hit rate, which barely moves day to day — the same
+names appeared night after night regardless of who was pitching. This
+version uses season consistency as a QUALIFICATION FLOOR and ranks on
+tonight-specific factors.
 
-    hit rate = games with at least 1 hit / games played
+FLOOR (must clear all):
+  - playing today (confirmed lineup preferred; otherwise roster
+    filtered to recent activity)
+  - >= 50% of games with a hit this season
+  - >= 25 games played
 
-Qualification bar, applied before ranking:
-    - hit rate >= 60%
-    - at least 25 games played (a 6-game 100% is noise, not
-      consistency, and doesn't belong on this board)
+RANKING (0-100, weights declared here and printed on the page):
+  RECENT FORM         40%  L15 hit rate, with L5 as a tiebreak signal
+  PITCHER MATCHUP     35%  the opposing starter's real BA allowed and
+                           K% (contact-friendly arms score higher),
+                           plus career BvP when the sample clears the
+                           floor
+  CONTEXT             25%  the opposing BULLPEN's real BA allowed
+                           (late at-bats matter) and LINEUP SLOT
+                           (top-of-order bats get an extra PA)
 
-The 13 highest qualifying rates make the board (games played breaks
-ties). If fewer than 13 hitters clear the bar, the board shows fewer —
-it does not pad with players below the minimum.
+L15 GATE: hitting in >= 12 of the last 15 is a genuine "locked in"
+signal. Rather than filtering the board down to a handful of names on
+quiet nights, those bats get a ranking BOOST and a badge, so the board
+always fills 13 with the hottest bats pinned on top.
 
-BvP weight: after the consistency ranking, the top 25 qualifiers get
-their real career line vs tonight's OPPOSING PROBABLE checked (MLB
-official vs-player split, one cached call each). Documented, capped
-rank adjustment: +4 rate points when PA >= 8 and career AVG >= .300
-vs him; -4 when PA >= 10 and AVG <= .150. The displayed Hit% is
-always the raw, unadjusted rate — the adjustment moves ORDER only,
-and the BvP line is printed on the row so the why is visible. Rows
-whose starter isn't posted yet rank on consistency alone.
-
-Honesty contract: this is HISTORICAL consistency measured from real
-per-game outcomes. It is not a probability that a player gets a hit
-tonight, and it ignores tonight's pitcher entirely by design — it's a
-season-long reliability screen, meant to be crossed with the Game
-Card's matchup work, not to replace it.
-
-Caching: local-parquet reads only (no live pulls — scanning ~400
-hitters through the network would take minutes; hitters without a
-local file are counted and skipped). Cached layers return JSON strings
-(always pickle-serializable), same pattern as weather_engine.
+Every component is real, sample-floored, and attached to the row so
+the page can show why each name is there. Nothing is fabricated: when
+a factor can't be measured (no probable posted, thin bullpen data),
+that component sits at neutral and says so.
 """
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
 
-from datetime import timedelta
-
 from engines.weather_engine import get_todays_games_with_weather
 from engines.roster import get_live_team_roster, get_confirmed_lineup
-from engines.statcast_engine import _read_local_parquet, _HIT_EVENTS
+from engines.statcast_engine import (
+    _read_local_parquet, _HIT_EVENTS, get_pitcher_advanced_splits,
+)
 from engines.team_abbreviations import team_abbr
 
 EASTERN = ZoneInfo("America/New_York")
 
+# ---- qualification floor ----
+MIN_HIT_RATE = 50.0     # season share of games with >= 1 hit
+MIN_GAMES = 25          # season games played
+BOARD_SIZE = 13
+
+# ---- L15 "locked in" gate (boost, not filter) ----
+L15_GATE_HITS = 12
+L15_GATE_GAMES = 15
+L15_GATE_BOOST = 8.0    # points added to the tonight score
+
+# ---- ranking weights (must sum to 1.0) ----
+W_FORM = 0.40
+W_MATCHUP = 0.35
+W_CONTEXT = 0.25
+
+# ---- component floors ----
+BVP_MIN_PA = 8
+PEN_MIN_ARMS = 5
+PEN_MIN_IP = 40.0
+
 
 def _data_stamp():
-    """(through_date, built_at) from the data package manifest — shown
-    on the board so 'is this today's data?' answers itself."""
     try:
         p = Path(__file__).resolve().parents[1] / "data" / "statcast" / "manifest.json"
         m = json.loads(p.read_text())
@@ -64,15 +79,10 @@ def _data_stamp():
     except Exception:
         return None, None
 
-MIN_HIT_RATE = 60.0   # percent of games with >= 1 hit
-MIN_GAMES = 25        # sample floor before a rate counts as "consistent"
-BOARD_SIZE = 13
-
 
 def _hit_log(pid):
-    """(games_played, games_with_hit, active_streak, last_game_date)
-    from the player's local parquet, or None when there's no usable
-    file."""
+    """(games, hit_games, streak, last_date, per_game_hits) — per_game
+    is oldest-to-newest booleans so windows can be sliced."""
     df = _read_local_parquet("batters", pid)
     if df is None or df.empty:
         return None
@@ -95,7 +105,44 @@ def _hit_log(pid):
             streak += 1
         else:
             break
-    return games_n, hit_games, streak, per_game[-1][0]
+    return games_n, hit_games, streak, per_game[-1][0], [h for _d, h in per_game]
+
+
+@st.cache_data(ttl=21600, max_entries=32, show_spinner=False)
+def _pen_contact_json(team: str, starter_pid, date_str: str) -> str:
+    """Opposing bullpen's pooled BA allowed — the late-innings half of
+    a hit prop. Relievers only (roster pitchers minus tonight's
+    starter), each from his own Statcast rows."""
+    arms, hits, abs_ = 0, 0, 0
+    for p in get_live_team_roster(team) or []:
+        if not p.get("is_pitcher") or not p.get("id"):
+            continue
+        if starter_pid and p["id"] == starter_pid:
+            continue
+        sp = get_pitcher_advanced_splits(p["id"])
+        ip = float(sp.get("IP") or 0.0)
+        ba = sp.get("BA")
+        if ip <= 0 or ba is None:
+            continue
+        # weight each arm's BA by its innings (a mop-up arm shouldn't
+        # count the same as a setup man)
+        arms += 1
+        hits += ba * ip
+        abs_ += ip
+    if arms < PEN_MIN_ARMS or abs_ < PEN_MIN_IP:
+        return json.dumps({"ba": None, "arms": arms, "ip": round(abs_, 1)})
+    return json.dumps({"ba": round(hits / abs_, 3), "arms": arms, "ip": round(abs_, 1)})
+
+
+def _scale(value, low, high):
+    """Map a value onto 0-100 between two real anchors, clamped."""
+    if value is None:
+        return None
+    try:
+        v = (float(value) - low) / (high - low) * 100.0
+    except Exception:
+        return None
+    return max(0.0, min(100.0, v))
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -110,17 +157,17 @@ def _daily13_json(date_str: str) -> str:
     for g in games:
         for side in ("away", "home"):
             t = g.get(side)
-            if t and t not in teams:
+            if t:
                 teams.append((t, g.get("game_pk"), side))
 
-    # "Playing today" guard, two layers:
-    # 1) If a team's CONFIRMED lineup is posted, that IS the pool for
-    #    that team — the literal answer to who's playing.
-    # 2) For teams without a posted lineup yet, fall back to the
-    #    roster, but require recent activity: last game within 6 days
-    #    of the data build's through-date. That's what keeps IL'd and
-    #    inactive names off the board without pretending to know
-    #    injury statuses this data doesn't carry.
+    # tonight's opposing starter + opposing team, per team
+    opp_info = {}
+    for g in games:
+        if g.get("home_pitcher_id"):
+            opp_info[g.get("away")] = (g["home_pitcher_id"], g.get("home_pitcher"), g.get("home"))
+        if g.get("away_pitcher_id"):
+            opp_info[g.get("home")] = (g["away_pitcher_id"], g.get("away_pitcher"), g.get("away"))
+
     through, _built = _data_stamp()
     cutoff = None
     if through:
@@ -130,16 +177,18 @@ def _daily13_json(date_str: str) -> str:
         except Exception:
             cutoff = None
 
-    # Map each team to tonight's OPPOSING probable (for the BvP check).
-    opp_pitcher = {}
-    for g in games:
-        if g.get("home_pitcher_id"):
-            opp_pitcher[g.get("away")] = (g["home_pitcher_id"], g.get("home_pitcher"))
-        if g.get("away_pitcher_id"):
-            opp_pitcher[g.get("home")] = (g["away_pitcher_id"], g.get("away_pitcher"))
+    # ---- opposing starter profiles (one fetch each, reused) ----
+    starter_cache = {}
+    for team, _gpk, _side in teams:
+        info = opp_info.get(team)
+        if not info or info[0] in starter_cache:
+            continue
+        sp = get_pitcher_advanced_splits(info[0])
+        starter_cache[info[0]] = {
+            "ba": sp.get("BA"), "k_pct": sp.get("K%"), "name": info[1],
+        }
 
-    scanned, no_file, inactive = 0, 0, 0
-    confirmed_teams = 0
+    scanned, no_file, inactive, confirmed_teams = 0, 0, 0, 0
     qualified = []
     for team, gpk, side in teams:
         lineup, is_confirmed = get_confirmed_lineup(gpk, side)
@@ -149,7 +198,19 @@ def _daily13_json(date_str: str) -> str:
         else:
             pool = [p for p in (get_live_team_roster(team) or [])
                     if not p.get("is_pitcher")]
-        for p in pool:
+
+        info = opp_info.get(team)
+        opp_pid, opp_name, opp_team = info if info else (None, None, None)
+        starter = starter_cache.get(opp_pid, {})
+
+        pen = {"ba": None}
+        if opp_team:
+            try:
+                pen = json.loads(_pen_contact_json(opp_team, opp_pid, date_str))
+            except Exception:
+                pass
+
+        for slot, p in enumerate(pool, start=1):
             if not p.get("id"):
                 continue
             scanned += 1
@@ -157,7 +218,7 @@ def _daily13_json(date_str: str) -> str:
             if log is None:
                 no_file += 1
                 continue
-            games_n, hit_games, streak, last_date = log
+            games_n, hit_games, streak, last_date, per_game = log
             if not is_confirmed and cutoff and last_date and last_date < cutoff:
                 inactive += 1
                 continue
@@ -166,57 +227,97 @@ def _daily13_json(date_str: str) -> str:
             rate = hit_games / games_n * 100.0
             if rate < MIN_HIT_RATE:
                 continue
+
+            # ---- FORM (40%) ----
+            l15 = per_game[-15:]
+            l5 = per_game[-5:]
+            l15_hits = sum(1 for h in l15 if h)
+            l5_hits = sum(1 for h in l5 if h)
+            l15_rate = l15_hits / len(l15) * 100.0 if l15 else rate
+            l5_rate = l5_hits / len(l5) * 100.0 if l5 else rate
+            # L15 carries the weight; L5 nudges it so a bat that's hot
+            # RIGHT NOW edges one that cooled off last week.
+            form_score = _scale(l15_rate * 0.75 + l5_rate * 0.25, 30.0, 90.0) or 0.0
+
+            # ---- MATCHUP (35%) ----
+            matchup_parts, matchup_notes = [], []
+            if starter.get("ba") is not None:
+                # higher BA allowed = better for a hit prop
+                matchup_parts.append(_scale(starter["ba"], 0.200, 0.300))
+                matchup_notes.append(f"{opp_name} allows {starter['ba']:.3f}")
+            if starter.get("k_pct") is not None:
+                # lower K% = more balls in play = better
+                matchup_parts.append(_scale(starter["k_pct"], 32.0, 14.0))
+                matchup_notes.append(f"{starter['k_pct']:.0f}% K")
+            bvp_line = None
+            if opp_pid:
+                from engines.bvp import career_bvp
+                d = career_bvp(p["id"], opp_pid)
+                if d and d.get("ab") and d.get("pa", 0) >= BVP_MIN_PA:
+                    avg = d.get("avg")
+                    if avg is not None:
+                        matchup_parts.append(_scale(avg, 0.150, 0.400))
+                        bvp_line = f'{d["h"]}-for-{d["ab"]} ({avg:.3f})'
+                        matchup_notes.append(f"BvP {bvp_line}")
+                elif d and d.get("ab"):
+                    bvp_line = f'{d["h"]}-for-{d["ab"]} (small)'
+            matchup_parts = [m for m in matchup_parts if m is not None]
+            matchup_score = (sum(matchup_parts) / len(matchup_parts)
+                             if matchup_parts else 50.0)
+            if not matchup_parts:
+                matchup_notes.append("starter not posted \u2014 neutral")
+
+            # ---- CONTEXT (25%) ----
+            context_parts, context_notes = [], []
+            if pen.get("ba") is not None:
+                context_parts.append(_scale(pen["ba"], 0.200, 0.300))
+                context_notes.append(f"pen allows {pen['ba']:.3f}")
+            else:
+                context_notes.append("pen sample thin \u2014 neutral")
+            if is_confirmed:
+                # real lineup slot: 1-3 get the extra PA edge
+                context_parts.append(_scale(10 - min(slot, 9), 1.0, 9.0))
+                context_notes.append(f"bats {slot}{'st' if slot==1 else 'nd' if slot==2 else 'rd' if slot==3 else 'th'}")
+            context_score = (sum(context_parts) / len(context_parts)
+                             if context_parts else 50.0)
+
+            tonight = (form_score * W_FORM + matchup_score * W_MATCHUP
+                       + context_score * W_CONTEXT)
+
+            locked = len(l15) >= L15_GATE_GAMES and l15_hits >= L15_GATE_HITS
+            if locked:
+                tonight += L15_GATE_BOOST
+
             qualified.append({
                 "name": p.get("name", "?"),
                 "id": p.get("id"),
-                "_team_full": team,
                 "team": team_abbr(team),
+                "opp": team_abbr(opp_team) if opp_team else "\u2014",
                 "gp": games_n,
-                "hit_gp": hit_games,
                 "rate": round(rate, 1),
+                "l15": f"{l15_hits}/{len(l15)}",
+                "l5": f"{l5_hits}/{len(l5)}",
                 "streak": streak,
+                "locked": locked,
+                "tonight": round(min(100.0, tonight), 1),
+                "form": round(form_score, 1),
+                "matchup": round(matchup_score, 1),
+                "context": round(context_score, 1),
+                "bvp": bvp_line or "",
+                "why": " \u00b7 ".join(matchup_notes + context_notes),
                 "today": "\u2713 lineup" if is_confirmed else "roster",
             })
 
-    qualified.sort(key=lambda r: (-r["rate"], -r["gp"]))
-
-    # BvP vs tonight's starter for the top 25 (see module docstring for
-    # the exact thresholds). adj_rate orders the board; displayed Hit%
-    # stays raw.
-    from engines.bvp import career_bvp
-    for r in qualified[:25]:
-        r["adj_rate"] = r["rate"]
-        opp = opp_pitcher.get(r.pop("_team_full", None))
-        if not opp:
-            r["bvp"] = "starter TBD"
-            continue
-        opp_pid, opp_name = opp
-        d = career_bvp(r["id"], opp_pid) if r.get("id") else None
-        if not d or not d.get("ab"):
-            r["bvp"] = f"no history vs {opp_name}"
-            continue
-        avg = d.get("avg")
-        avg_txt = f"{avg:.3f}" if avg is not None else "\u2014"
-        r["bvp"] = f'{d["h"]}-for-{d["ab"]} ({avg_txt}) vs {opp_name}'
-        if d["pa"] >= 8 and avg is not None and avg >= 0.300:
-            r["adj_rate"] = round(r["rate"] + 4, 1)
-        elif d["pa"] >= 10 and avg is not None and avg <= 0.150:
-            r["adj_rate"] = round(r["rate"] - 4, 1)
-    for r in qualified:
-        r.pop("_team_full", None)
-        r.setdefault("adj_rate", r["rate"])
-        r.setdefault("bvp", "")
-    qualified.sort(key=lambda r: (-r["adj_rate"], -r["rate"], -r["gp"]))
-    through, built = _data_stamp()
+    qualified.sort(key=lambda r: (-r["tonight"], -r["rate"]))
     return json.dumps({
-        "data_through": through,
-        "built": built,
         "rows": qualified[:BOARD_SIZE],
+        "data_through": through,
+        "built": _built,
         "scanned": scanned,
         "no_file": no_file,
-        "qualified": len(qualified),
         "inactive": inactive,
         "confirmed_teams": confirmed_teams,
+        "qualified": len(qualified),
         "warning": games_error,
     }, default=str)
 

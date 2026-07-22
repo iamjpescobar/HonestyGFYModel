@@ -71,6 +71,9 @@ _ZONE_MIN_PITCHER = 200   # pitcher's in-zone pitches to profile him
 _ZONE_MIN_P = 15          # batter pitches in a zone to count it
 _ZONE_MIN_BBE = 5         # batter batted balls in a zone to count it
 _ZONE_MIN_COVER = 0.5     # sampled zones must cover half his mix
+_ZONE_HH_MIN_BBE = 10     # batted balls in a zone before hard-hit% counts
+_ZONE_HH_THRESHOLD = 45.0 # hard-hit% that marks a zone as a damage zone
+_ZONE_HH_BONUS_CAP = 4    # most the hard-hit layer can add or remove
 _PEN_MIN_ARMS = 5
 _PEN_MIN_IP = 40.0
 
@@ -136,14 +139,22 @@ def _batter_zone_dmg_json(batter_id) -> str:
     overall = xslg[is_bbe].dropna()
     if overall.empty:
         return json.dumps({})
-    zones = {}
+    ev = pd.to_numeric(df.get("launch_speed"), errors="coerce")
+    zones, zones_hh = {}, {}
     for zn in range(1, 10):
         mask = z == zn
         n = int(mask.sum())
         dmg = xslg[mask & is_bbe].dropna()
         if n >= _ZONE_MIN_P and len(dmg) >= _ZONE_MIN_BBE:
             zones[str(zn)] = round(float(dmg.mean()), 4)
-    return json.dumps({"zones": zones, "overall": round(float(overall.mean()), 4)})
+        # Zone hard-hit carries its own (stricter) floor — a hard-hit
+        # rate needs more batted balls than an xSLG average before it
+        # means anything.
+        ev_z = ev[mask & is_bbe].dropna()
+        if len(ev_z) >= _ZONE_HH_MIN_BBE:
+            zones_hh[str(zn)] = round(float((ev_z >= 95).mean() * 100), 1)
+    return json.dumps({"zones": zones, "zones_hh": zones_hh,
+                       "overall": round(float(overall.mean()), 4)})
 
 
 def zone_fit_component(batter_id, pitcher_id):
@@ -172,6 +183,29 @@ def zone_fit_component(batter_id, pitcher_id):
     adj = int(max(-ZONE_CAP, min(ZONE_CAP, round(diff * 60))))
     note = (f"expected xSLG {expected:.3f} where he throws vs own norm {overall:.3f} "
             f"({cover:.0%} of mix sampled)")
+
+    # Contact-quality layer: weight his HARD-HIT rate by the same
+    # pitcher mix. This separates two bats with identical expected
+    # xSLG — one squaring balls up where this guy lives, the other
+    # getting weak contact that happens to fall in. Capped small
+    # (±4) because it's a refinement of the xSLG read, not a rival
+    # to it, and only applied when enough zones cleared the stricter
+    # hard-hit floor.
+    zones_hh = dmg.get("zones_hh") or {}
+    hh_fit, hh_cover = 0.0, 0.0
+    for zn, share in mix.items():
+        if zn in zones_hh:
+            hh_fit += share * zones_hh[zn]
+            hh_cover += share
+    if hh_cover >= _ZONE_MIN_COVER:
+        expected_hh = hh_fit / hh_cover
+        hh_diff = expected_hh - _ZONE_HH_THRESHOLD
+        hh_adj = int(max(-_ZONE_HH_BONUS_CAP,
+                         min(_ZONE_HH_BONUS_CAP, round(hh_diff / 5.0))))
+        if hh_adj:
+            adj = int(max(-ZONE_CAP, min(ZONE_CAP, adj + hh_adj)))
+            note += (f" \u00b7 hard-hit {expected_hh:.0f}% there "
+                     f"vs {_ZONE_HH_THRESHOLD:.0f}% bar ({hh_adj:+d})")
     return adj, note
 
 
