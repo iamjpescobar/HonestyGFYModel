@@ -16,7 +16,7 @@ from engines.daily_13 import (
     W_FORM, W_MATCHUP, W_CONTEXT, L15_GATE_HITS, L15_GATE_GAMES,
 )
 from engines.live_sync import sync_latest_button
-from engines.calibration import board_record
+from engines.calibration import log_picks, grade_pending, summary
 
 inject_kc_theme()
 
@@ -82,19 +82,21 @@ with card("daily13"):
             width="stretch",
             height=min(56 + 35 * len(df), 560),
         )
-        # Calibration is produced by the nightly pipeline (the app's
-        # data directory is rebuilt on every deploy, so the app can't
-        # keep a record). Here we only display what it published.
-        _cal = board_record("daily13")
-        if _cal:
+        # Calibration: record tonight's board, grade past days, and
+        # show the running record. This is what turns "the board looks
+        # right" into a measured hit rate.
+        log_picks("daily13", rows)
+        grade_pending()
+        _cal = summary().get("daily13", {})
+        if _cal.get("total"):
             st.caption(
                 f'Tracked record \u2014 this board\'s picks {_cal["question"]} '
                 f'{_cal["hits"]}/{_cal["total"]} ({_cal["rate"]}%) over the graded period'
                 + (f' \u00b7 {_cal["dnp"]} did not play (excluded)' if _cal.get("dnp") else "")
             )
         else:
-            st.caption("Tracked record \u2014 the nightly pipeline logs picks before first "
-                       "pitch; results appear here once a slate is final.")
+            st.caption("Tracked record \u2014 tonight's picks are logged; results appear "
+                       "here once the games are final.")
 
         with st.expander("\U0001F50D Why each bat \u2014 the components behind tonight's score"):
             for r in rows:
