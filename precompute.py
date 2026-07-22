@@ -169,6 +169,31 @@ def main():
     (DATA_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2))
     print("Manifest:", json.dumps(manifest, indent=2))
 
+    # ---- Calibration: grade finished slates, log tonight's picks ----
+    # Runs here (pipeline side) rather than in the app because the
+    # app's data directory is rebuilt on every deploy — anything it
+    # writes is erased within hours. Living inside the data package
+    # means the record survives deploys and ships with the data.
+    try:
+        import calibration_pipeline as cal
+        import slate_picks
+        record = DATA_DIR / "calibration.json"
+        cal.grade(record)
+        cal.prune(record)
+        d13, hr_edge = slate_picks.build_picks(DATA_DIR)
+        if d13:
+            cal.log(record, "daily13", d13)
+        if hr_edge:
+            cal.log(record, "hr_edge", hr_edge)
+        summary = cal.summarize(record)
+        for board, s in summary.items():
+            if s["total"]:
+                print(f"[calibration] {s['label']}: {s['hits']}/{s['total']} "
+                      f"({s['rate']}%) over {len(s['days'])} graded day(s)")
+    except Exception as exc:
+        print(f"[calibration] WARNING: calibration step failed ({exc}) — "
+              f"continuing with the data build.")
+
     print("Packaging archive...")
     with tarfile.open(ARCHIVE, "w:gz") as tar:
         tar.add(OUT_ROOT / "data", arcname="data")

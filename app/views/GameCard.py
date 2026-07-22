@@ -25,7 +25,6 @@ from engines.batter_trends import render_batter_trend
 from engines.bvp import render_bvp_card, render_zone_map, render_spray_chart
 from engines.edge import edge_components, pen_context, bvp_component
 from engines.pick_badges import compute_badges, render_badge_row
-from engines.calibration import log_picks as _log_picks
 from engines.team_logos import logo_for
 from engines.park_weather import get_park_forecast
 from engines.slam_engine import slam_from_profile
@@ -880,17 +879,6 @@ with content_col:
                             [r for r in filtered if r.get("edge") is not None],
                             key=lambda r: -(r.get("edge") or 0),
                         )
-                        # log the top HR Edge bats for calibration
-                        if _badge_pool:
-                            try:
-                                _log_picks("hr_edge", [
-                                    {"id": r.get("id"), "name": r.get("name"),
-                                     "team": team_abbr(opposing_team)}
-                                    for r in _badge_pool[:5]
-                                ])
-                            except Exception:
-                                pass
-
                         _any_badges = False
                         for _br in _badge_pool[:5]:
                             _bd, _why = compute_badges(
