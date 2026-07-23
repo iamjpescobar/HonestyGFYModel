@@ -15,7 +15,7 @@ from pathlib import Path
 _FG_LOCAL = Path(__file__).resolve().parent.parent / "data" / "statcast" / "fangraphs_batting.parquet"
 
 
-@st.cache_data(ttl=7200)
+@st.cache_data(ttl=7200, max_entries=2, show_spinner=False)
 def load_batting_stats():
     """
     Loads real MLB batting stats (FanGraphs leaderboard).

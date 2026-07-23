@@ -2,7 +2,7 @@ import requests
 import streamlit as st
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=300, max_entries=40, show_spinner=False)
 def get_confirmed_lineup(game_pk, side: str):
     """
     Real confirmed starting lineup for one specific game, straight from
@@ -77,7 +77,7 @@ def get_confirmed_lineup(game_pk, side: str):
     return lineup, True
 
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=1800, max_entries=40, show_spinner=False)
 def get_all_teams():
     """
     Returns a clean list of all MLB team names. Returns an empty list
@@ -94,7 +94,7 @@ def get_all_teams():
     return sorted([t["name"] for t in teams])
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=300, max_entries=40, show_spinner=False)
 def get_live_team_roster(team_name: str):
     """
     Returns this team's CURRENT roster: rosterType=active (the real 26
@@ -206,7 +206,7 @@ def get_live_team_roster(team_name: str):
     return players
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=300, max_entries=40, show_spinner=False)
 def get_last_starting_lineup(team_name: str):
     """
     The real 9 starters from this team's most recently COMPLETED game —

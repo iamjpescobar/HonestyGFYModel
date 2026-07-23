@@ -126,10 +126,20 @@ else:
                     "Window", ["Season", "L25", "L10", "L5"],
                     default="L10", key="kb_trend_win", label_visibility="collapsed",
                 ) or "L10"
+                # Line options follow the stat — a 5.5 line means
+                # something for strikeouts and nothing for innings.
+                _KB_LINES = {
+                    "Strikeouts": (["3.5", "4.5", "5.5", "6.5", "7.5"], "5.5"),
+                    "Earned Runs": (["1.5", "2.5", "3.5"], "2.5"),
+                    "Hits Allowed": (["3.5", "4.5", "5.5", "6.5"], "5.5"),
+                    "Walks": (["0.5", "1.5", "2.5"], "1.5"),
+                    "Innings": (["4.5", "5.5", "6.5"], "5.5"),
+                }
+                _kb_opts, _kb_dflt = _KB_LINES.get(_t_stat, (["3.5", "5.5"], "5.5"))
                 _t_line = float(st.segmented_control(
-                    "Line", ["3.5", "4.5", "5.5", "6.5", "7.5"],
-                    default="5.5", key="kb_trend_line", label_visibility="collapsed",
-                ) or "5.5")
+                    "Line", _kb_opts, default=_kb_dflt,
+                    key=f"kb_trend_line_{_t_stat}", label_visibility="collapsed",
+                ) or _kb_dflt)
                 render_pitcher_trend(_r["pid"], _pick, _t_stat, _t_win, line=_t_line)
                 _vs_bit = (
                     f" \u00b7 vs {_r['opp']} history: {_r['vs_opp_avg']} K avg over "

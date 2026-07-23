@@ -548,7 +548,6 @@ _AB_EVENTS = _HIT_EVENTS | {"field_out", "strikeout", "strikeout_double_play",
                             "force_out", "fielders_choice_out", "field_error"}
 
 
-@st.cache_data(ttl=3600, max_entries=8, show_spinner=False)
 @st.cache_data(ttl=3600, max_entries=64, show_spinner=False)
 def get_batter_iso_vs_hand(batter_id, throws: str) -> float:
     """Batter's real ISO against pitchers of one handedness ("R"/"L"),

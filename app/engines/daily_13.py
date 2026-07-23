@@ -145,7 +145,7 @@ def _scale(value, low, high):
     return max(0.0, min(100.0, v))
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=1800, max_entries=4, show_spinner=False)
 def _daily13_json(date_str: str) -> str:
     games, games_error = get_todays_games_with_weather()
     if not games:

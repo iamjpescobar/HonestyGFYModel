@@ -248,7 +248,7 @@ def zone_fit_component(batter_id, pitcher_id):
 # ------------------------------------------------------------------
 # 3) Bullpen (slate-relative)
 # ------------------------------------------------------------------
-@st.cache_data(ttl=21600, show_spinner=False)
+@st.cache_data(ttl=21600, max_entries=32, show_spinner=False)
 def _pen_profile_json(team: str, starter_pid, date_str: str) -> str:
     """Pooled pen HR/9 from the team's real relievers (roster pitchers
     minus tonight's starter), each from his own Statcast rows."""
@@ -272,7 +272,7 @@ def _pen_profile_json(team: str, starter_pid, date_str: str) -> str:
                        "arms": arms, "ip": round(ip_total, 1)})
 
 
-@st.cache_data(ttl=21600, show_spinner=False)
+@st.cache_data(ttl=21600, max_entries=32, show_spinner=False)
 def _slate_pen_avg_json(date_str: str) -> str:
     """Average pen HR/9 across every team on today's slate — the
     apples-to-apples baseline. Heavy on first build, cached all day."""

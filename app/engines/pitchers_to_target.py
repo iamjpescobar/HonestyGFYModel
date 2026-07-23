@@ -42,7 +42,7 @@ _MIN_GAMES = 3
 _MIN_IP = 10.0
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=900, max_entries=4, show_spinner=False)
 def _targets_json(date_str: str, basis: str = "season") -> str:
     games, games_error = get_todays_games_with_weather()
     if not games:

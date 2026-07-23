@@ -29,7 +29,7 @@ from datetime import date
 from pybaseball import statcast_batter_percentile_ranks
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, max_entries=2, show_spinner=False)
 def load_percentile_ranks(year: int = None):
     """
     Real, live MLB-computed percentile ranks for every qualified batter

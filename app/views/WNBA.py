@@ -47,7 +47,7 @@ def _load_games():
         return None, None
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=60, max_entries=4, show_spinner=False)
 def _live_overrides():
     """Best-effort live score check straight from the same verified feed
     the pipeline uses, shared across all sessions and refreshed at most
@@ -312,7 +312,19 @@ def _render_slate():
         )
 
         if g.get("away_players") or g.get("home_players"):
-            with st.expander(f'\U0001F3C0 Prop research \u2014 {away} @ {home}'):
+            # Streamlit runs everything inside a collapsed expander — it
+            # only hides the OUTPUT. With 10 prop tabs x 2 styled tables
+            # per game, a 6-game slate was building ~120 tables on every
+            # single interaction, including games nobody opened. This
+            # checkbox gates the work itself: nothing below runs until
+            # you ask for that game, which is the single biggest speed
+            # win on the page.
+            _open_key = f"wnba_props_open_{gi}"
+            _show_props = st.checkbox(
+                f'\U0001F3C0 Prop research \u2014 {away} @ {home}',
+                key=_open_key, value=False,
+            )
+            if _show_props:
                 st.markdown(
                     f'<div class="pf-card-subtitle" style="color:{COLOR["magenta_purple"]}; margin-bottom:4px;">'
                     f'Real box-score data \u00b7 Season / L5 / L10 = averages over all, last 5, and last 10 '
@@ -359,11 +371,27 @@ def _render_slate():
                             default="L10", key=f"wnba_trend_win_{gi}",
                             label_visibility="collapsed",
                         ) or "L10"
+                        # Line options follow the STAT. A fixed list meant
+                        # switching Points -> 3PM kept a 14.5 line, which is
+                        # meaningless for threes; and because the widget key
+                        # didn't change with the stat, Streamlit held onto
+                        # the stale value. Keying by stat gives each one its
+                        # own remembered choice.
+                        _LINE_SETS = {
+                            "Points": (["9.5", "14.5", "19.5", "24.5"], "14.5"),
+                            "Rebounds": (["3.5", "5.5", "7.5", "9.5"], "5.5"),
+                            "Assists": (["1.5", "2.5", "3.5", "5.5"], "2.5"),
+                            "PRA": (["14.5", "19.5", "24.5", "29.5"], "19.5"),
+                            "3PM": (["0.5", "1.5", "2.5", "3.5"], "1.5"),
+                            "Stocks": (["0.5", "1.5", "2.5", "3.5"], "1.5"),
+                            "Minutes": (["19.5", "24.5", "29.5", "33.5"], "29.5"),
+                        }
+                        _opts, _dflt = _LINE_SETS.get(_pt_stat, (["9.5", "14.5"], "14.5"))
                         _pt_line = float(st.segmented_control(
-                            "Line", ["0.5", "4.5", "9.5", "14.5", "19.5", "24.5"],
-                            default="14.5", key=f"wnba_trend_line_{gi}",
+                            "Line", _opts, default=_dflt,
+                            key=f"wnba_trend_line_{gi}_{_pt_stat}",
                             label_visibility="collapsed",
-                        ) or "14.5")
+                        ) or _dflt)
                         _pt_key = {"Points": "pts", "Rebounds": "reb",
                                    "Assists": "ast", "PRA": "pra", "3PM": "tpm",
                                    "Stocks": "stocks", "Minutes": "min"}[_pt_stat]

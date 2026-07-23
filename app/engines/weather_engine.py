@@ -44,7 +44,7 @@ def get_todays_games_with_weather(date_str: str = None):
     return payload.get("games") or [], payload.get("error")
 
 
-@st.cache_data(ttl=900)
+@st.cache_data(ttl=900, max_entries=8, show_spinner=False)
 def _fetch_todays_games_json(date_str: str) -> str:
     """Cached fetch. Returns json.dumps({"games": [...], "error": ...})
     with default=str, so any non-JSON-native value that ever slips past

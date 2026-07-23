@@ -88,8 +88,6 @@ def build_mlb_pages(include_admin: bool):
         ("Daily 13", "views/Daily_13.py"),
         ("Pitchers to Target", "views/Pitchers_To_Target.py"),
         ("Weather Board", "views/Weather_Board.py"),
-        ("WNBA Defense", "views/WNBA_Defense.py"),
-        ("WNBA Props", "views/WNBA_Props.py"),
         ("Player of the Day", "views/Player_Of_The_Day.py"),
         # Model / Pitcher Report / Pitcher Splits / Pitch Mix Splits /
         # Lineup Analysis / Team Tools / KC Lineup Dashboard removed
@@ -113,6 +111,19 @@ SPORT_PAGES = {
     "NFL": "views/NFL.py",
     "NBA": "views/NBA.py",
     "NHL": "views/NHL.py",
+}
+
+# Sports with more than one page get their own nav. WNBA's boards used
+# to sit in the MLB list, which put basketball pages in front of
+# baseball users — they belong here, visible only when WNBA is the
+# selected sport.
+SPORT_SUBPAGES = {
+    "WNBA": [
+        ("Slate & Props", "views/WNBA.py"),
+        ("Defense Matchup", "views/WNBA_Defense.py"),
+        ("Props Board", "views/WNBA_Props.py"),
+        ("Without Player", "views/Without_Player.py"),
+    ],
 }
 
 
@@ -346,5 +357,22 @@ if selected_sport == "MLB":
             st.empty()
 
 else:
-    # Non-MLB sports load their own page modules
-    load_page_module(SPORT_PAGES[selected_sport])
+    # Non-MLB sports load their own page modules. Sports with several
+    # pages get a nav row above the content; single-page sports load
+    # straight through exactly as before.
+    _subpages = SPORT_SUBPAGES.get(selected_sport)
+    if _subpages:
+        _titles = [t for t, _p in _subpages]
+        _key = f"lc_sub_{selected_sport}"
+        # Read the widget key first so a click takes effect on the same
+        # rerun (same one-click fix the main nav uses).
+        _active = st.session_state.get(_key, _titles[0])
+        _choice = st.radio(
+            f"{selected_sport} pages", _titles,
+            index=_titles.index(_active) if _active in _titles else 0,
+            key=_key, horizontal=True, label_visibility="collapsed",
+        )
+        _path = dict(_subpages).get(_choice or _titles[0], _subpages[0][1])
+        load_page_module(_path)
+    else:
+        load_page_module(SPORT_PAGES[selected_sport])

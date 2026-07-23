@@ -1056,14 +1056,26 @@ with content_col:
                                 "Window", ["Season", "L25", "L10", "L5"],
                                 default="L10", key="bt_window", label_visibility="collapsed",
                             )
+                            # Line options follow the stat, and the key
+                            # includes it so switching stats doesn't carry a
+                            # stale line across (a 3.5 HR line is nonsense).
+                            _BT_LINES = {
+                                "Hits": (["0.5", "1.5", "2.5"], "0.5"),
+                                "HR": (["0.5", "1.5"], "0.5"),
+                                "RBI": (["0.5", "1.5", "2.5"], "0.5"),
+                                "H+R+RBI": (["1.5", "2.5", "3.5", "4.5"], "2.5"),
+                            }
+                            _bt_opts, _bt_dflt = _BT_LINES.get(_bt_stat or "Hits",
+                                                               (["0.5", "1.5"], "0.5"))
                             _bt_line = st.segmented_control(
-                                "Line", ["0.5", "1.5", "2.5", "3.5"],
-                                default="0.5", key="bt_line", label_visibility="collapsed",
+                                "Line", _bt_opts, default=_bt_dflt,
+                                key=f"bt_line_{_bt_stat or 'Hits'}",
+                                label_visibility="collapsed",
                             )
                             render_batter_trend(
                                 _bt_ids[_bt_pick], _bt_pick,
                                 _bt_stat or "Hits", _bt_win or "L10",
-                                line=float(_bt_line or "0.5"),
+                                line=float(_bt_line or _bt_dflt),
                             )
                             # Deep dive: career BvP vs tonight's selected
                             # pitcher, then zone map + spray chart on the

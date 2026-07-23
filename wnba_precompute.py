@@ -552,8 +552,31 @@ def main():
         "generated_at_et": now_et.strftime("%Y-%m-%d %H:%M"),
         "players": players,
     }, ensure_ascii=False, indent=2))
-    print(f"WNBA: wrote games.json ({len(todays)} games) and players.json "
-          f"({len(players)} players)")
+
+    # Per-game logs, trimmed to what the without-player page needs.
+    # Only players with real game lines are included, and each line
+    # keeps just date/team/minutes/production — enough to split a
+    # season by "did teammate X play", without shipping the full raw
+    # box score for every game.
+    slim_logs = {}
+    for pid, rec in logs.items():
+        games = [
+            {"date": gl.get("date"), "min": gl.get("min"),
+             "pts": gl.get("pts"), "reb": gl.get("reb"),
+             "ast": gl.get("ast"), "pra": gl.get("pra")}
+            for gl in (rec.get("games") or []) if gl.get("date")
+        ]
+        if not games:
+            continue
+        slim_logs[pid] = {
+            "name": rec.get("name"), "team": rec.get("team"),
+            "pos": rec.get("pos"), "games": games,
+        }
+    (OUT / "player_logs.json").write_text(
+        json.dumps(slim_logs, ensure_ascii=False, indent=2))
+
+    print(f"WNBA: wrote games.json ({len(todays)} games), players.json "
+          f"({len(players)} players), player_logs.json ({len(slim_logs)} players)")
 
 
 if __name__ == "__main__":

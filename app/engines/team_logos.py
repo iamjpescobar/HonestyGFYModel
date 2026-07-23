@@ -17,7 +17,7 @@ _TEAMS_URL = "https://statsapi.mlb.com/api/v1/teams?sportId=1"
 _LOGO_URL = "https://www.mlbstatic.com/team-logos/{tid}.svg"
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
+@st.cache_data(ttl=86400, max_entries=2, show_spinner=False)
 def _team_ids_json() -> str:
     try:
         resp = requests.get(_TEAMS_URL, timeout=10)

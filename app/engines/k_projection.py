@@ -76,7 +76,7 @@ _MIN_STARTS = 2
 _MIN_IP = 6.0
 
 
-@st.cache_data(ttl=21600, show_spinner=False)
+@st.cache_data(ttl=21600, max_entries=64, show_spinner=False)
 def _team_k_rates_json() -> str:
     """Season K% (strikeouts / plate appearances) for every MLB team,
     plus the league rate, from MLB's own team hitting stats. Cached 6h —
@@ -112,7 +112,7 @@ def _team_k_rates_json() -> str:
     return json.dumps({"teams": teams, "league": league, "error": None}, default=str)
 
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=900, max_entries=4, show_spinner=False)
 def _slate_projections_json(date_str: str, basis: str = "season") -> str:
     """Builds the full board for a date. Cached 15 min so the page is
     instant for everyone after the first load. Returns a JSON string."""
