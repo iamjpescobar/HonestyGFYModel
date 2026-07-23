@@ -28,10 +28,15 @@ ESPN's public gamelog endpoint — the same source the WNBA pipeline
 already uses, so both halves of the site grade against the data they
 were built from.
 
-Storage is a plain JSON file under the app's data directory. It's
-small (a few KB per week), survives redeploys only if the data volume
-does — so this is a rolling record, and the page says so rather than
-implying a permanent ledger.
+STORAGE ARCHITECTURE
+The app's own filesystem is rebuilt on every deploy, so nothing it
+writes is durable. The record therefore lives in the nightly data
+archive: the app logs today's picks locally, the pipeline's
+calibration step (calibration_pipeline.py) grades them against real
+box scores and republishes the merged record inside the next archive,
+and the app reads that published record back. Grading in the app
+remains available for same-session feedback, but the pipeline is the
+source of truth for history.
 """
 import json
 from datetime import datetime, timedelta
@@ -42,7 +47,16 @@ import requests
 import streamlit as st
 
 EASTERN = ZoneInfo("America/New_York")
-_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "calibration.json"
+# The app writes picks HERE — inside the same data directory the
+# nightly archive unpacks into. That placement is the handoff: the
+# pipeline's calibration step reads these picks, grades them against
+# real box scores, and republishes the merged record in the next
+# archive. The app's own writes are still ephemeral (the container is
+# rebuilt on deploy), but they only need to survive until the next
+# pipeline run, and the durable record always comes back from the
+# archive.
+_DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+_LOG_PATH = _DATA_DIR / "calibration.json"
 _URL = "https://statsapi.mlb.com/api/v1/people/{pid}/stats"
 
 BOARDS = {
@@ -61,14 +75,50 @@ BOARDS = {
 }
 
 
+def _published_path():
+    """The pipeline's record, as unpacked from the nightly archive.
+
+    precompute.py packs build_data/data as "data", and fetch_data.py
+    extracts that into app/, so the pipeline's
+    build_data/data/calibration.json arrives here as
+    app/data/calibration.json — the same file the app writes its own
+    picks to. _load() merges them with graded entries winning, which
+    is exactly the behaviour we want: the published record restores
+    history, and today's local picks sit alongside it."""
+    return _DATA_DIR / "calibration.json"
+
+
 def _load():
-    try:
-        return json.loads(_LOG_PATH.read_text())
-    except Exception:
-        return {}
+    """Published record (durable) merged with local picks (today's).
+
+    Per day, the version with more graded picks wins — so a day the
+    pipeline has already graded is never overwritten by a local copy
+    that only has the picks."""
+    merged = {}
+    for path in (_published_path(), _LOG_PATH):
+        try:
+            data = json.loads(path.read_text())
+        except Exception:
+            continue
+        for board, days in (data or {}).items():
+            if not isinstance(days, dict):
+                continue
+            dest = merged.setdefault(board, {})
+            for day, entry in days.items():
+                prev = dest.get(day)
+                if prev is None or _graded_n(entry) >= _graded_n(prev):
+                    dest[day] = entry
+    return merged
+
+
+def _graded_n(entry):
+    return sum(1 for p in (entry or {}).get("picks", [])
+               if p.get("result") in ("hit", "miss"))
 
 
 def _save(data):
+    """Write to the LOCAL pick log only. The published record is
+    read-only from the app's perspective — the pipeline owns it."""
     try:
         _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         _LOG_PATH.write_text(json.dumps(data, indent=2))
@@ -223,7 +273,12 @@ def grade_pending(max_days: int = 14) -> int:
 
 
 def summary():
-    """Per-board record over everything graded so far."""
+    """Per-board record over everything graded so far.
+
+    Reads whatever _load() returns, which is the pipeline-published
+    record merged with any picks this container has logged today. The
+    pipeline is the source of truth for GRADED history; the app only
+    ever adds today's ungraded picks on top."""
     data = _load()
     out = {}
     for board, cfg in BOARDS.items():
