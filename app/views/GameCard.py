@@ -16,7 +16,8 @@ from engines.park_factors import get_park_factor
 from engines.headshots import get_headshot_url
 from engines.roster import get_live_team_roster, get_all_teams, get_confirmed_lineup, get_last_starting_lineup
 from engines.statcast_engine import (
-    get_pitcher_id, get_pitcher_statcast, get_pitcher_advanced_splits, get_batter_profile_windowed, get_batter_vs_pitch_types
+    get_pitcher_id, get_pitcher_statcast, get_pitcher_advanced_splits, get_batter_profile_windowed, get_batter_vs_pitch_types,
+    get_first_pitch_swing
 , get_batter_iso_vs_hand
 )
 from engines.savant_leaderboard import load_percentile_ranks
@@ -580,7 +581,7 @@ with content_col:
                             if opp_batters:
                                 bp_rows = []
                                 for ob in opp_batters[:9]:
-                                    vs = get_batter_vs_pitch_types(ob.get("id"), bp_top3, window="season", unit="bbe")
+                                    vs = get_batter_vs_pitch_types(ob.get("id"), tuple(bp_top3), window="season", unit="bbe")
                                     bp_rows.append({
                                         "Player": ob.get("name", "?"),
                                         "BA": vs.get("BA"),
@@ -684,13 +685,17 @@ with content_col:
     # + Zone Fit(±15) + Bullpen(±10). Every component sample-floored
     # and shown in the Edge breakdown below the table. engines/edge.py
     # documents the exact tiers and math.
+    # Defined unconditionally: the lineup table reads this for switch
+    # hitters even when no probable is posted, and a NameError there
+    # would take down the whole page.
+    _p_throws = (pitcher_data or {}).get("p_throws") or (pitcher_data or {}).get("Throws")
+
     if ranked and pitcher_id:
         _pitcher_team = game["away"] if opposing_team == game["home"] else game["home"]
         with st.spinner("Computing matchup edges \u2014 the first lineup of the day also "
                         "builds the slate-wide bullpen baseline (~30s once, cached all day; "
                         "instant after)\u2026"):
             _pen_adj, _pen_note = pen_context(_pitcher_team, pitcher_id)
-            _p_throws = (pitcher_data or {}).get("p_throws") or (pitcher_data or {}).get("Throws")
             for _r in ranked:
                 _r.update(edge_components(_r.get("id"), pitcher_id,
                                           _r.get("hr_score"), _pen_adj, _pen_note))
@@ -853,8 +858,25 @@ with content_col:
                 # (Brl%, HH%, etc.) below now come from this SAME real
                 # pull, so they always agree with each other and both
                 # genuinely respect the Window filter, not just SLAM.
+                # Switch hitters are profiled from the side they will
+                # ACTUALLY bat tonight, which the opposing starter's
+                # throwing hand decides (S vs RHP means batting left).
+                # Blending both sides into one number hid real platoon
+                # splits — often the difference between a good matchup
+                # and a bad one for the very same player.
+                def _side_for(row):
+                    if (row.get("bats") or "").upper() != "S":
+                        return None
+                    if _p_throws == "R":
+                        return "L"
+                    if _p_throws == "L":
+                        return "R"
+                    return None
+
                 windowed_profile_cache = {
-                    r["name"]: get_batter_profile_windowed(r.get("id"), window=window_key, unit="bbe")
+                    r["name"]: get_batter_profile_windowed(
+                        r.get("id"), window=window_key, unit="bbe",
+                        stand=_side_for(r))
                     for r in filtered
                 }
                 slam_cache = {name: slam_from_profile(p) for name, p in windowed_profile_cache.items()}
@@ -917,7 +939,7 @@ with content_col:
 
                     table_rows.append({
                         "Player": r["name"],
-                        "Bats": r["bats"],
+                        "Bats": (f'S\u2192{_side_for(r)}' if _side_for(r) else r["bats"]),
                         "Matchup": tier,
                         "SLAM": round(slam, 1),
                         "BA": profile.get("BA", 0),
@@ -1048,6 +1070,60 @@ with content_col:
                             label_visibility="collapsed",
                         )
                         if _bt_pick in _bt_ids:
+                            # ---- First-pitch tendency + switch-hitter sides ----
+                            # A switch hitter's two sides are often different
+                            # hitters; showing one blended number hides the
+                            # split that decides the matchup, so both are
+                            # offered whenever he actually bats both ways.
+                            _bt_row = next((r for r in ranked if r["name"] == _bt_pick), {})
+                            _bt_bats = (_bt_row.get("bats") or "").upper()
+                            _side_opts = ["Combined", "as RHB", "as LHB"] if _bt_bats == "S" else ["Combined"]
+                            _side_pick = "Combined"
+                            if len(_side_opts) > 1:
+                                _side_pick = st.segmented_control(
+                                    "Batting side", _side_opts, default="Combined",
+                                    key=f"bt_side_{st.session_state['gc_selected_game_idx']}",
+                                    label_visibility="collapsed",
+                                ) or "Combined"
+                            _stand = {"as RHB": "R", "as LHB": "L"}.get(_side_pick)
+
+                            _fp = get_first_pitch_swing(_bt_ids[_bt_pick],
+                                                        window="season", stand=_stand)
+                            if _fp.get("swing_pct") is not None:
+                                _fp_col = (COLOR["error"] if _fp["swing_pct"] >= 40
+                                           else COLOR["stat_high"] if _fp["swing_pct"] <= 20
+                                           else COLOR["warn"])
+                                _extra = []
+                                if _fp.get("contact") is not None:
+                                    _extra.append(f'{_fp["contact"]:.0f}% contact when he swings')
+                                if _fp.get("hard_hit") is not None:
+                                    _extra.append(f'{_fp["hard_hit"]:.0f}% hard-hit')
+                                if _fp.get("xslg") is not None:
+                                    _extra.append(f'{_fp["xslg"]:.3f} xSLG on first-pitch contact')
+                                # NOTE: no backslash escapes inside f-string
+                                # expressions — Python 3.11 (Render) rejects
+                                # them even though 3.12 allows it.
+                                _sep = " \u00b7 "
+                                _side_txt = (_sep + _side_pick.lower()) if _stand else ""
+                                _extra_txt = _sep.join(_extra)
+                                _extra_html = (
+                                    f'<div style="font-size:10.5px; opacity:0.65; '
+                                    f'margin-top:2px;">{_extra_txt}</div>'
+                                ) if _extra else ""
+                                st.markdown(
+                                    f'<div style="font-family:\'JetBrains Mono\',monospace; '
+                                    f'font-size:12px; color:{COLOR["text"]}; margin:6px 0;">'
+                                    f'First-pitch swing '
+                                    f'<b style="color:{_fp_col};">{_fp["swing_pct"]:.1f}%</b> '
+                                    f'<span style="opacity:0.6;">({_fp["pa"]} first pitches'
+                                    f'{_side_txt})</span>'
+                                    + _extra_html
+                                    + '</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            elif _fp.get("reason"):
+                                st.caption(f'First-pitch swing rate: {_fp["reason"]}.')
+
                             _bt_stat = st.segmented_control(
                                 "Stat", ["Hits", "HR", "RBI", "H+R+RBI"],
                                 default="Hits", key="bt_stat", label_visibility="collapsed",
@@ -1107,7 +1183,7 @@ with content_col:
                 else:
                     matchup_rows = []
                     for r in filtered:
-                        vs_profile = get_batter_vs_pitch_types(r.get("id"), top_3_pitches, window=window_key, unit="bbe")
+                        vs_profile = get_batter_vs_pitch_types(r.get("id"), tuple(top_3_pitches), window=window_key, unit="bbe")
                         pitches_seen = vs_profile.get("_pitches_seen", 0)
                         matchup_rows.append({
                             "Player": r["name"],

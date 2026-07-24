@@ -1,90 +1,140 @@
 """
-Calibration — the scorecard for this app's own picks.
+Calibration — the scorecard for this app's own picks. ADMIN ONLY.
 
-Shows how the tracked boards have actually performed: picks are
-written down by the nightly pipeline BEFORE the games, then graded
-against MLB's official box scores after every game is final.
+Picks are written down BEFORE the games and graded against official
+box scores after they're final. That ordering is the whole point: any
+list of good hitters looks sharp on the nights it lands, and the only
+way to know whether a model adds value is to record it in advance and
+count.
 
-The point is honesty. Any list of good hitters looks sharp on the
-nights it lands; the only way to know whether a model is adding value
-is to record the picks in advance and count.
+This page is restricted to the admin profile because it is diagnostic,
+not a product feature — it shows raw records, sample sizes, and the
+storage path, including the honest answer when a board has no history
+yet.
+
+Each board is graded on the outcome it is actually trying to produce:
+  Daily 13           -> at least one hit
+  HR Edge (top 5)    -> at least one home run
+  Player of the Day  -> at least one extra-base hit
+  WNBA boards        -> cleared the line the board implied
 """
+import json
+
 import pandas as pd
 import streamlit as st
 
 from styles.kc_theme import inject_kc_theme, card, footer, COLOR
-from engines.calibration import summary
+from auth import require_admin, render_account_sidebar
+from engines.calibration import summary, grade_pending, BOARDS, _load, _LOG_PATH
 
 inject_kc_theme()
+render_account_sidebar()
+require_admin()
 
 st.markdown(
-    f'<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">'
-    f'<span style="font-size:20px; font-weight:800; letter-spacing:-0.02em; color:{COLOR["text"]};">CALIBRATION</span>'
-    f'</div>',
+    f'<div style="display:flex; align-items:center; gap:8px; margin-bottom:2px;">'
+    f'<span style="font-size:20px; font-weight:800; letter-spacing:-0.02em; '
+    f'color:{COLOR["text"]};">CALIBRATION</span>'
+    f'<span style="font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px; '
+    f'background:{COLOR["error"]}22; color:{COLOR["error"]};">ADMIN</span></div>',
     unsafe_allow_html=True,
 )
 
-data = summary()
-tracked = {k: v for k, v in data.items() if v.get("total")}
+# Baselines a board has to BEAT to be adding value. Without these a
+# hit rate is just a number — 33% looks fine until you know a coin
+# flip on the same target is also 33%.
+BASELINES = {
+    "daily13": ("~65%", "a good contact hitter gets a hit in about 2 of every 3 games"),
+    "hr_edge": ("~12%", "a given hitter homers in roughly 1 game in 8"),
+    "potd": ("~33%", "a hitter records an extra-base hit in roughly 1 game in 3"),
+    "wnba_props": ("~50%", "a line set at a player's own average is cleared about half the time"),
+    "wnba_defense": ("~50%", "same — these are graded against each player's own recent form"),
+}
 
-if not tracked:
-    st.info(
-        "No graded results yet. The nightly pipeline logs each board's picks before "
-        "the games and grades them once every game is final \u2014 the first records "
-        "appear after the next completed slate."
+if st.button("\u27f3 Grade pending picks now", key="cal_grade"):
+    with st.spinner("Grading any completed slates\u2026"):
+        n = grade_pending()
+    st.success(f"Graded {n} pick(s).")
+    st.rerun()
+
+data = _load()
+sums = summary()
+
+with card("cal_summary"):
+    st.markdown(
+        f'<div class="pf-card-title" style="color:{COLOR["gold"]};">Tracked record by board</div>'
+        f'<div class="pf-card-subtitle">Picks are logged before games and graded after. '
+        f'"Did not play" is excluded from the rate rather than counted as a miss \u2014 a '
+        f'scratched player is not a bad pick. Beat the baseline and the model is adding '
+        f'value; sit at it and it is not.</div>',
+        unsafe_allow_html=True,
     )
-    footer()
-    st.stop()
+    rows = []
+    for board, cfg in BOARDS.items():
+        s = sums.get(board, {})
+        base, _why = BASELINES.get(board, ("\u2014", ""))
+        rows.append({
+            "Board": cfg.get("label", board),
+            "Graded on": cfg.get("question", "\u2014"),
+            "Record": f'{s.get("hits", 0)}/{s.get("total", 0)}' if s.get("total") else "\u2014",
+            "Rate": f'{s["rate"]:.1f}%' if s.get("rate") is not None else "\u2014",
+            "Baseline": base,
+            "DNP": s.get("dnp", 0),
+            "Days logged": len(data.get(board, {})),
+        })
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
-for board, s in tracked.items():
-    with card(f"cal_{board}"):
-        rate = s["rate"]
-        col = (COLOR["stat_high"] if rate is not None and rate >= 60
-               else COLOR["warn"] if rate is not None and rate >= 45
-               else COLOR["error"])
-        st.markdown(
-            f'<div class="pf-card-title" style="color:{COLOR["gold"]};">{s["label"]}</div>'
-            f'<div class="pf-card-subtitle">Share of logged picks that {s["question"]}, '
-            f'graded from MLB official box scores.</div>'
-            f'<div style="font-size:26px; font-weight:800; color:{col}; margin:6px 0 2px 0;">'
-            f'{s["hits"]}/{s["total"]} \u00b7 {rate}%</div>'
-            f'<div style="font-size:10.5px; color:{COLOR["text"]}; opacity:0.6;">'
-            f'{len(s["days"])} graded slate(s)'
-            + (f' \u00b7 {s["dnp"]} pick(s) did not play (excluded, not counted as misses)'
-               if s.get("dnp") else "")
-            + '</div>',
-            unsafe_allow_html=True,
+    _any = any(s.get("total") for s in sums.values())
+    if not _any:
+        st.info(
+            "No graded results yet. Picks only appear here after their slate is final and "
+            "the pipeline has graded them, so a brand-new record stays empty for a day. "
+            "If it is still empty after a couple of nightly runs, the handoff is broken \u2014 "
+            "check the storage path below."
+        )
+    else:
+        st.caption(
+            "Read these over weeks, not nights. Even a genuinely strong model loses most "
+            "days on a home-run board and has losing streaks of four or five on any board."
         )
 
-        if s["days"]:
-            df = pd.DataFrame([
-                {"Date": d["date"],
-                 "Hits": str(d["hits"]),
-                 "Picks": str(d["total"]),
-                 "Rate": f'{d["hits"] / d["total"] * 100:.0f}%' if d["total"] else "\u2014"}
-                for d in reversed(s["days"])
-            ])
-            st.dataframe(df, width="stretch", hide_index=True,
-                         height=min(56 + 35 * len(df), 420))
+# Per-board detail
+for board, cfg in BOARDS.items():
+    days = data.get(board, {})
+    if not days:
+        continue
+    with st.expander(f'{cfg.get("label", board)} \u2014 {len(days)} day(s) logged'):
+        base, why = BASELINES.get(board, ("\u2014", ""))
+        if why:
+            st.caption(f"Baseline {base}: {why}.")
+        detail = []
+        for day in sorted(days.keys(), reverse=True):
+            picks = days[day].get("picks", [])
+            hits = sum(1 for p in picks if p.get("result") == "hit")
+            miss = sum(1 for p in picks if p.get("result") == "miss")
+            dnp = sum(1 for p in picks if p.get("result") == "dnp")
+            pending = sum(1 for p in picks if p.get("result") is None)
+            detail.append({
+                "Date": day,
+                "Record": f"{hits}/{hits + miss}" if (hits + miss) else "\u2014",
+                "Hits": hits, "Misses": miss, "DNP": dnp, "Pending": pending,
+                "Names": ", ".join(p.get("name", "?") for p in picks[:6])
+                         + ("\u2026" if len(picks) > 6 else ""),
+            })
+        st.dataframe(pd.DataFrame(detail), width="stretch", hide_index=True)
 
-        with st.expander("Per-pick detail"):
-            for d in reversed(s["days"]):
-                names = []
-                for p in d.get("picks", []):
-                    mark = {"hit": "\u2705", "miss": "\u274c", "dnp": "\u2014"}.get(
-                        p.get("result"), "?")
-                    names.append(f'{mark} {p.get("name") or p.get("id")}')
-                st.caption(f'**{d["date"]}** \u00b7 ' + " \u00b7 ".join(names))
-
-st.caption(
-    "Picks are logged by the nightly data pipeline before first pitch and graded only "
-    "after every game on that slate is final \u2014 an in-progress slate is never scored. "
-    "Players who did not appear are excluded rather than counted as misses. The pipeline "
-    "computes picks slate-wide with a consistent method every night, so the rate measures "
-    "the model rather than which pages happened to be open. Note that the tracked HR Edge "
-    "picks use the core power ranking (barrel, hard-hit, HR/FB); the Game Card's full Edge "
-    "stack adds BvP, zone fit, and bullpen context at request time, so this is a floor on "
-    "model quality rather than a ceiling. Records cover a rolling 45-day window."
-)
+with card("cal_storage"):
+    st.markdown(
+        f'<div class="pf-card-title" style="color:{COLOR["gold"]};">Storage</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        f"Record path: `{_LOG_PATH}` \u00b7 boards tracked: {len(BOARDS)} \u00b7 "
+        f"total days on file: {sum(len(d) for d in data.values())}. "
+        "The nightly pipeline restores the previous record, grades finished slates, and "
+        "republishes it inside the data archive, so history survives redeploys."
+    )
+    with st.expander("Raw record (JSON)"):
+        st.code(json.dumps(data, indent=2)[:20000] or "{}", language="json")
 
 footer()

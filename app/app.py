@@ -97,6 +97,10 @@ def build_mlb_pages(include_admin: bool):
     ]
 
     if include_admin:
+        # Admin-only diagnostics. Calibration shows raw pick records and
+        # sample sizes — useful for verifying the tracker is actually
+        # accumulating, not a subscriber-facing feature.
+        pages.append(("Calibration (Admin)", "views/Calibration.py"))
         pages.append(("Debug Roster (Admin)", "views/0_Debug_Roster.py"))
 
     return pages

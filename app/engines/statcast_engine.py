@@ -394,7 +394,8 @@ def get_batter_statcast(batter_id):
     return metrics
 
 
-def get_batter_vs_pitch_types(batter_id, pitch_types: list, window: str = "season", unit: str = "bbe"):
+@st.cache_data(ttl=1800, max_entries=256, show_spinner=False)
+def get_batter_vs_pitch_types(batter_id, pitch_types: tuple, window: str = "season", unit: str = "bbe"):
     """
     Real batter performance specifically against a given set of pitch
     types (meant to be a pitcher's top 3 most-used pitches) — same real
@@ -425,16 +426,111 @@ def get_batter_vs_pitch_types(batter_id, pitch_types: list, window: str = "seaso
     return metrics
 
 
-def get_batter_profile_windowed(batter_id, window: str = "season", unit: str = "bbe"):
+@st.cache_data(ttl=1800, max_entries=256, show_spinner=False)
+def get_first_pitch_swing(batter_id, window: str = "season", stand: str = None) -> dict:
+    """First-pitch swing rate, and what he actually does with it.
+
+    A 0-0 count is identified by balls == 0 and strikes == 0 — the
+    literal first pitch of a plate appearance. That's more reliable
+    than pitch_number, which counts pitches within a PA and drifts
+    once fouls start piling up.
+
+    Returns swing_pct (share of first pitches offered at), pa (the
+    sample), contact (of those swings, share put in play or fouled),
+    xslg (real expected slugging on first-pitch balls in play), and
+    hard_hit (share of first-pitch batted balls at 95+ mph).
+
+    Sample floor: below MIN_FP first pitches nothing is reported — a
+    first-pitch swing rate off 20 plate appearances is noise, not a
+    tendency, and this app doesn't publish noise as a number.
+
+    stand: "R"/"L" splits a switch hitter; None is combined.
+    """
+    MIN_FP = 50
+    from engines.recency_windows import apply_window
+    try:
+        df, _err = _get_batter_df(batter_id)
+    except Exception:
+        return {"swing_pct": None, "pa": 0, "reason": "no pitch data"}
+    if df is None or df.empty:
+        return {"swing_pct": None, "pa": 0, "reason": "no pitch data"}
+    if stand in ("R", "L") and "stand" in df.columns:
+        df = df[df["stand"] == stand]
+    if window != "season":
+        df = apply_window(df, window, "games")
+    if df.empty or not {"balls", "strikes", "description"}.issubset(df.columns):
+        return {"swing_pct": None, "pa": 0,
+                "reason": "no first-pitch data in this window"}
+
+    balls = pd.to_numeric(df["balls"], errors="coerce")
+    strikes = pd.to_numeric(df["strikes"], errors="coerce")
+    fp = df[(balls == 0) & (strikes == 0)]
+    n = int(len(fp))
+    if n < MIN_FP:
+        return {"swing_pct": None, "pa": n,
+                "reason": f"{n} first pitches - below the {MIN_FP} floor"}
+
+    swing_desc = ["hit_into_play", "foul", "foul_tip",
+                  "swinging_strike", "swinging_strike_blocked"]
+    swings = fp[fp["description"].isin(swing_desc)]
+    n_swings = int(len(swings))
+    contact = swings[swings["description"].isin(["hit_into_play", "foul", "foul_tip"])]
+
+    out = {
+        "swing_pct": round(n_swings / n * 100, 1),
+        "pa": n,
+        "swings": n_swings,
+        "contact": round(len(contact) / n_swings * 100, 1) if n_swings else None,
+        "reason": None,
+    }
+
+    bip = fp[fp["type"] == "X"] if "type" in fp.columns else fp.iloc[0:0]
+    if not bip.empty:
+        if "estimated_slg_using_speedangle" in bip.columns:
+            v = pd.to_numeric(bip["estimated_slg_using_speedangle"],
+                              errors="coerce").dropna()
+            out["xslg"] = round(float(v.mean()), 3) if not v.empty else None
+        if "launch_speed" in bip.columns:
+            ev = pd.to_numeric(bip["launch_speed"], errors="coerce").dropna()
+            out["hard_hit"] = (round(float((ev >= 95).mean() * 100), 1)
+                               if not ev.empty else None)
+        out["bip"] = int(len(bip))
+    return out
+
+
+@st.cache_data(ttl=1800, max_entries=384, show_spinner=False)
+def get_batter_profile_windowed(batter_id, window: str = "season", unit: str = "bbe",
+                                stand: str = None):
     """
     Real recency-windowed batter profile — same metrics as
     get_batter_statcast, but sliced to a specific window ("season" /
     "l60" / "l25" / "l15" / "l5") and unit ("games" / "pa" / "bbe")
     using engines/recency_windows.py. This is what SLAM, the Lineup
     table's window filter, and the pitch-matchup stat all call.
+
+    CACHED (this matters a lot): the Game Card calls this once per
+    batter for the lineup table AND again per ranked batter, so a
+    single render was recomputing ~18 full profiles — slicing the
+    DataFrame and recomputing every metric each time — on EVERY rerun,
+    which in Streamlit means every click, filter change, and toggle.
+    That was roughly 200ms of pure recomputation per interaction with
+    the data already in memory. The result is deterministic for a
+    given (batter, window, unit), so caching it is free correctness.
+    max_entries covers a full slate's batters across several windows.
     """
     from engines.recency_windows import apply_window
     df, error = _get_batter_df(batter_id)
+
+    # Switch-hitter support: "stand" records which side he ACTUALLY
+    # batted from in each plate appearance, so stand="R"/"L" returns
+    # that side's real profile. A switch hitter's two sides are often
+    # completely different hitters, and blending them into one number
+    # hides exactly the split that decides a matchup. The filter runs
+    # BEFORE the window, so "last 15" means 15 games batting from
+    # that side, not 15 games overall.
+    if stand in ("R", "L") and df is not None and not df.empty and "stand" in df.columns:
+        df = df[df["stand"] == stand]
+
     windowed_df = apply_window(df, window, unit)
     metrics = _compute_batted_ball_metrics(windowed_df)
     metrics["Whiff %"] = _compute_whiff_pct(windowed_df)
